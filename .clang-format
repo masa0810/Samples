@@ -1,0 +1,222 @@
+---
+# 対象としているフォーマットスタイルの言語
+Language:        Cpp
+# BasedOnStyle:  Google
+# アクセス修飾子(public: protected: private:)のインデント
+AccessModifierOffset: -1
+# 開始括弧の後で水平方向に引数を整列させる
+AlignAfterOpenBracket: Align
+# 連続する行の代入演算子を揃える
+AlignConsecutiveAssignments: false
+# 連続する行の宣言を揃える
+AlignConsecutiveDeclarations: false
+# エスケープされた改行の位置
+AlignEscapedNewlines: Left
+# 水平方向に二項演算子と三項演算子を揃える
+AlignOperands:   true
+# コメントを末尾に揃える
+AlignTrailingComments: true
+# BinPackParameters が false の場合でも、 次の行に関数宣言のすべてのパラメータを置く
+AllowAllParametersOfDeclarationOnNextLine: true
+# 単一の行に簡単なブレース文を収縮
+AllowShortBlocksOnASingleLine: false
+# 短いケースラベルを単一行に置く
+AllowShortCaseLabelsOnASingleLine: false
+# int f() { return 0; } を単一行に置くか
+AllowShortFunctionsOnASingleLine: All
+# 単一行の if (a) return; をキープ
+AllowShortIfStatementsOnASingleLine: true
+# 単一行の while (true) continue; をキープ
+AllowShortLoopsOnASingleLine: true
+# 非推奨オプション
+AlwaysBreakAfterDefinitionReturnType: None
+# 関数宣言の戻り値の型のスタイル。 より正確には「関数定義の型以下の識別子の前に改行」
+AlwaysBreakAfterReturnType: None
+# 複数行のリテラル文字列の前で改行する
+AlwaysBreakBeforeMultilineStrings: true
+# テンプレート宣言の template<...> の後に改行
+AlwaysBreakTemplateDeclarations: true
+# falseの場合、関数呼び出しの引数は、全て同じ行か、1行ごとになる。
+BinPackArguments: true
+# 関数呼び出しや関数定義のパラメーターを、一行ごとにするか
+BinPackParameters: true
+# 波括弧{}のフォーマットスタイル
+BraceWrapping:
+  # class の後
+  AfterClass:      false
+  # コントロールステートメント(if/for/while/switch/..)の後
+  AfterControlStatement: false
+  # enum の後
+  AfterEnum:       false
+  # 関数の後
+  AfterFunction:   false
+  # namespace の後
+  AfterNamespace:  false
+  # ObjC 宣言(@autoreleasepool, interfaces, ..)の後
+  AfterObjCDeclaration: false
+  # struct の後
+  AfterStruct:     false
+  # union の後
+  AfterUnion:      false
+  # extern の後
+  AfterExternBlock: false
+  # catch の前
+  BeforeCatch:     false
+  # else の前
+  BeforeElse:      false
+  # 波括弧{}自体をインデント
+  IndentBraces:    false
+  # 空の関数波括弧{}に改行を入れるか
+  SplitEmptyFunction: true
+  # 空のクラス波括弧{}に改行を入れるか
+  SplitEmptyRecord: true
+  # 空のネームスペース波括弧{}に改行を入れるか
+  SplitEmptyNamespace: true
+# 二項演算子の折り返し方法
+BreakBeforeBinaryOperators: None
+# 波括弧{}のフォーマットスタイル
+BreakBeforeBraces: Attach
+# 継承クラス宣言の改行ルール
+BreakBeforeInheritanceComma: false
+# 三項演算子を、改行の後に配置する
+BreakBeforeTernaryOperators: true
+# コンストラクタ初期化子のコンマの前で改行し、コロンでカンマを揃えるか
+BreakConstructorInitializersBeforeComma: false
+# コンストラクタの初期化リストの改行場所
+BreakConstructorInitializers: BeforeColon
+# Javaファイル内のフィールドのアノテーションの後に改行
+BreakAfterJavaFieldAnnotations: false
+# フォーマット時に文字列リテラルを改行で調整
+BreakStringLiterals: true
+# ColumnLimit
+ColumnLimit:     100
+# 行に分割または変更すべきでない、特別な意味を持つのコメントを記述する正規表現
+CommentPragmas:  '^ IWYU pragma:'
+# 連続するネームスペースを同じ行にする
+CompactNamespaces: true
+# コンストラクターの初期化子が行に収まらない場合は改行する
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+# コンストラクタ初期化子リストのインデントに使用する文字数
+ConstructorInitializerIndentWidth: 4
+# 継続行のためのインデント幅
+ContinuationIndentWidth: 4
+# C++11の統一初期化子の波括弧スタイル
+Cpp11BracedListStyle: true
+# * や & の位置を自動判定。
+DerivePointerAlignment: true
+# 全ての書式設定を無効にする。
+DisableFormat:   false
+# 関数呼び出しと定義が1行につき1つのパラメータでフォーマットされているかどうかを検出(※試験的機能)
+ExperimentalAutoDetectBinPacking: false
+# ネームスペース末尾にコメント追加
+FixNamespaceComments: true
+# foreachマクロ
+ForEachMacros:   
+  - foreach
+  - Q_FOREACH
+  - BOOST_FOREACH
+# #includeのソートのブロック分けルール
+IncludeBlocks:   Preserve
+# #include のオーダーに使用されるカテゴリー
+IncludeCategories: 
+  - Regex:           '^<ext/.*\.h>'
+    Priority:        2
+  - Regex:           '^<.*\.h>'
+    Priority:        1
+  - Regex:           '^<.*'
+    Priority:        2
+  - Regex:           '.*'
+    Priority:        3
+# file-to-main-include マッピングで許可されている サフィックスの正規表現を指定する
+IncludeIsMainRegex: '([-_](test|unittest))?$'
+# switch ブロック内の case X: 文をインデント
+IndentCaseLabels: true
+# マクロの字下げ
+IndentPPDirectives: None
+# インデントに使用する列数
+IndentWidth:     2
+# 型の後に関数定義または宣言がラップされている場合はインデントする
+IndentWrappedFunctionNames: false
+# JavaScriptの文字列に使用するクォートの種類
+JavaScriptQuotes: Leave
+# JavaScriptのインポート/エクスポートステートメントをラップする
+JavaScriptWrapImports: true
+# ブロックの開始時の空行を保持する
+KeepEmptyLinesAtTheStartOfBlocks: false
+# ブロック開始マクロにマッチする正規表現
+MacroBlockBegin: ''
+# ブロック終了マクロにマッチする正規表現
+MacroBlockEnd:   ''
+# 最大連続空行数
+MaxEmptyLinesToKeep: 1
+# namespace のインデント
+NamespaceIndentation: None
+# Objective-Cのプロトコルのパック
+ObjCBinPackProtocolList: Never
+# Objective-Cのインデントの文字数
+ObjCBlockIndentWidth: 2
+# Objective-Cで @property の後にスペースを追加する
+ObjCSpaceAfterProperty: false
+# Objective-Cのプロトコルリストの前にスペースを追加
+ObjCSpaceBeforeProtocolList: true
+# 代入演算のペナルティー
+PenaltyBreakAssignment: 2
+# “call(” のペナルティー
+PenaltyBreakBeforeFirstCallParameter: 1
+# コメントのペナルティー
+PenaltyBreakComment: 300
+# << のペナルティー
+PenaltyBreakFirstLessLess: 120
+# リテラル文字列のペナルティー
+PenaltyBreakString: 1000
+# 文字のペナルティー
+PenaltyExcessCharacter: 1000000
+# 独自の行に関数の戻り値の型を置くためのペナルティー
+PenaltyReturnTypeOnItsOwnLine: 200
+# * や & のスタイル
+PointerAlignment: Left
+# 生文字フォーマット定義
+RawStringFormats: 
+  - Language:        TextProto
+    Delimiters:      
+      - pb
+      - PB
+      - proto
+      - PROTO
+    CanonicalDelimiter: ''
+    BasedOnStyle:    google
+# コメントをリフローしようと試みる
+ReflowComments:  false
+# #include をソートする。
+SortIncludes:    true
+# using をソートする。
+SortUsingDeclarations: true
+# Cスタイルのキャスト後のスペース
+SpaceAfterCStyleCast: false
+# template の後のスペース
+SpaceAfterTemplateKeyword: true
+# 代入演算子の前のスペースを削除しない
+SpaceBeforeAssignmentOperators: true
+# 開始括弧’(‘ の前のスペース
+SpaceBeforeParens: ControlStatements
+# 空括弧()内のスペース
+SpaceInEmptyParentheses: false
+# 1行コメントの前のスペース幅
+SpacesBeforeTrailingComments: 2
+# 山括弧<>の内側のスペース
+SpacesInAngles:  false
+# コンテナリテラル(例. ObjC、 Javascript 配列、 dict リテラル) の内部にスペースを挿入する
+SpacesInContainerLiterals: true
+# Cスタイルのキャストのスペース
+SpacesInCStyleCastParentheses: false
+# 括弧()の内側のスペース
+SpacesInParentheses: false
+# 括弧[]の内側のスペース
+SpacesInSquareBrackets: false
+# C++バージョン
+Standard:        Auto
+# タブ幅
+TabWidth:        4
+# タブの使い方
+UseTab:          Never
+...
