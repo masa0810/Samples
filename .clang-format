@@ -59,7 +59,7 @@ BraceWrapping:
   # union の後
   AfterUnion:      false
   # extern の後
-  AfterExternBlock: false
+#  AfterExternBlock: false
   # catch の前
   BeforeCatch:     false
   # else の前
@@ -116,7 +116,7 @@ ForEachMacros:
   - Q_FOREACH
   - BOOST_FOREACH
 # #includeのソートのブロック分けルール
-IncludeBlocks:   Preserve
+#IncludeBlocks:   Preserve
 # #include のオーダーに使用されるカテゴリー
 IncludeCategories: 
   - Regex:           '^<ext/.*\.h>'
@@ -132,7 +132,7 @@ IncludeIsMainRegex: '([-_](test|unittest))?$'
 # switch ブロック内の case X: 文をインデント
 IndentCaseLabels: true
 # マクロの字下げ
-IndentPPDirectives: None
+#IndentPPDirectives: None
 # インデントに使用する列数
 IndentWidth:     2
 # 型の後に関数定義または宣言がラップされている場合はインデントする
@@ -152,7 +152,7 @@ MaxEmptyLinesToKeep: 1
 # namespace のインデント
 NamespaceIndentation: None
 # Objective-Cのプロトコルのパック
-ObjCBinPackProtocolList: Never
+#ObjCBinPackProtocolList: Never
 # Objective-Cのインデントの文字数
 ObjCBlockIndentWidth: 2
 # Objective-Cで @property の後にスペースを追加する
@@ -176,15 +176,15 @@ PenaltyReturnTypeOnItsOwnLine: 200
 # * や & のスタイル
 PointerAlignment: Left
 # 生文字フォーマット定義
-RawStringFormats: 
-  - Language:        TextProto
-    Delimiters:      
-      - pb
-      - PB
-      - proto
-      - PROTO
-    CanonicalDelimiter: ''
-    BasedOnStyle:    google
+#RawStringFormats: 
+#  - Language:        TextProto
+#    Delimiters:      
+#      - pb
+#      - PB
+#      - proto
+#      - PROTO
+#    CanonicalDelimiter: ''
+#    BasedOnStyle:    google
 # コメントをリフローしようと試みる
 ReflowComments:  false
 # #include をソートする。

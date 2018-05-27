@@ -22,8 +22,7 @@ namespace chr = std::chrono;
 BOOST_AUTO_TEST_SUITE(Common)
 
 BOOST_AUTO_TEST_CASE(Init) {
-  const auto srcImg =
-      cv::imread(R"(C:\Library\Current\Source\opencv\samples\data\lena.jpg)");
+  const auto srcImg = cv::imread(R"(C:\Library\Current\Source\opencv\samples\data\lena.jpg)");
   BOOST_TEST_MESSAGE("{:d}x{:d}"_format(srcImg.cols, srcImg.rows));
 
   cv::Mat dstImg(srcImg.rows << 1, srcImg.cols << 1, srcImg.type());
@@ -33,6 +32,11 @@ BOOST_AUTO_TEST_CASE(Init) {
 
   cv::imshow("Dst", dstImg);
   cv::waitKey();
+
+  {
+    chr::time_point p = chr::time_point::now();
+    chr::system_clock t = chr::system_clock::now();
+  }
 }
 
 BOOST_AUTO_TEST_SUITE_END()
