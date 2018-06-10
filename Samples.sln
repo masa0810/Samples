@@ -5,6 +5,8 @@ VisualStudioVersion = 15.0.27703.2018
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HalideTest", "HalideTest\HalideTest.vcxproj", "{2163612C-7BFB-47CF-B650-C52F191CCC70}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BoostMP11", "BoostMP11\BoostMP11.vcxproj", "{20A6AEE7-A830-4BFE-99FC-2E5E8E752635}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -15,6 +17,10 @@ Global
 		{2163612C-7BFB-47CF-B650-C52F191CCC70}.Debug|x64.Build.0 = Debug|x64
 		{2163612C-7BFB-47CF-B650-C52F191CCC70}.Release|x64.ActiveCfg = Release|x64
 		{2163612C-7BFB-47CF-B650-C52F191CCC70}.Release|x64.Build.0 = Release|x64
+		{20A6AEE7-A830-4BFE-99FC-2E5E8E752635}.Debug|x64.ActiveCfg = Debug|x64
+		{20A6AEE7-A830-4BFE-99FC-2E5E8E752635}.Debug|x64.Build.0 = Debug|x64
+		{20A6AEE7-A830-4BFE-99FC-2E5E8E752635}.Release|x64.ActiveCfg = Release|x64
+		{20A6AEE7-A830-4BFE-99FC-2E5E8E752635}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
