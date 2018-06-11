@@ -180,18 +180,56 @@ struct FindImage_ : FindImageImpl_<T, B, std::is_same<T, typename B::ImageType>:
 
 #pragma endregion
 
+#pragma region 画像ステップ計算
+
+/// <summary>
+/// 画像ステップ計算
+/// </summary>
+/// <param name="width">画像幅</param>
+/// <returns>画像ステップ</returns>
+/// <remarks>キャッシュアライメント有効</remarks>
+template <typename ImgBufType, bool enableCacheAlign,
+          std::enable_if_t<enableCacheAlign, std::nullptr_t> = nullptr>
+std::size_t CalcStep(const int width) {
+  // キャッシュライン
+  static const std::size_t CacheLine = tbb::internal::NFS_GetLineSize();
+  static const std::size_t CacheLineM1 = CacheLine - 1;
+  // 画像情報
+  static constexpr auto channel = ImgBufType::Channel;
+  static constexpr auto elemSize = ImgBufType::ElemtnSize;
+  static constexpr auto coeff = channel * elemSize;
+  // ステップ計算
+  return (((width * coeff) + CacheLineM1) / CacheLine) * CacheLine;
+}
+
+/// <summary>
+/// 画像ステップ計算
+/// </summary>
+/// <param name="width">画像幅</param>
+/// <returns>画像ステップ</returns>
+/// <remarks>キャッシュアライメント無効</remarks>
+template <typename ImgBufType, bool enableCacheAlign,
+          std::enable_if_t<!enableCacheAlign, std::nullptr_t> = nullptr>
+std::size_t CalcStep(const int width) {
+  // 画像情報
+  static constexpr auto channel = ImgBufType::Channel;
+  static constexpr auto elemSize = ImgBufType::ElemtnSize;
+  static constexpr auto coeff = channel * elemSize;
+  // ステップ計算
+  return width * coeff;
+}
+
+#pragma endregion
+
 }  // namespace detail
 
 /// <summary>
 /// 画像コレクションクラス
 /// </summary>
-template <template <typename...> class Alloc_, typename I, typename... Args>
+template <template <typename...> class Alloc_, bool EnableCacheAlign, typename I, typename... Args>
 class _ImageCollection_
     : public detail::DuplicateCheck_<std::tuple<>, I, Args...>,
       detail::ImageBuffer_<std::vector<std::uint8_t, Alloc_<std::uint8_t>>, I, Args...> {
-  ////! キャッシュアライメントの有効・無効
-  //static constexpr auto EnableCacheAlign =
-  //    std::is_same<Alloc_<std::uint8_t>, tbb::cache_aligned_allocator<std::uint8_t>>::value;
   //! バッファタイプ
   using BufferType = std::vector<std::uint8_t, Alloc_<std::uint8_t>>;
   //! バッファ本体タイプ
@@ -350,7 +388,7 @@ class _ImageCollection_
     auto& buf = imgBuf._Buffer;
 
     // ステップ、サイズ、バッファ初期化
-    step = (((newSize.width * coeff) + CacheLineM1) / CacheLine) * CacheLine;
+    step = detail::CalcStep<ImgBufType, EnableCacheAlign>(newSize.width);
     size = newSize;
     buf.assign(step * size.height, std::uint8_t(0));
   }
@@ -431,6 +469,6 @@ class _ImageCollection_
 /// </summary>
 /// <remarks>アロケータ指定</remarks>
 template <typename... Args>
-using ImageCollection_ = _ImageCollection_<tbb::cache_aligned_allocator, Args...>;
+using ImageCollection_ = _ImageCollection_<tbb::cache_aligned_allocator, true, Args...>;
 
 }  // namespace bmp11
