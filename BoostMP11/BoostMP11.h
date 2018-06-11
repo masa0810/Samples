@@ -4,6 +4,8 @@
 
 MSVC_ALL_WARNING_PUSH
 
+#include <cstddef>
+
 #include <tuple>
 #include <type_traits>
 #include <vector>
@@ -76,24 +78,26 @@ struct DuplicateCheck_<L, I, Args...>
 /// <summary>
 /// 宣言
 /// </summary>
-template <template <typename...> class Alloc_, typename... Args>
+template <typename BufferType, typename... Args>
 struct ImageBuffer_;
 
 /// <summary>
 /// 特殊化
 /// </summary>
 /// <remarks>パラメータリストの1つ</remarks>
-template <template <typename...> class Alloc_, typename I>
-struct ImageBuffer_<Alloc_, I> {
+template <typename BufferType, typename I>
+struct ImageBuffer_<BufferType, I> {
   //! 画像タイプ
   using ImageType = typename I::ImageType;
   //! 画像の要素タイプ
   using ValueType = typename I::ValueType;
-  //! チャンネルタイプ
-  using ChannelType = typename I::ChannelType;
-  //! バッファタイプ
-  using BufferType = std::vector<ValueType, Alloc_<ValueType>>;
+  //! チャンネル
+  static constexpr auto Channel = typename I::ChannelType::value;
+  //! 要素のバイトサイズ
+  static constexpr auto ElemtnSize = sizeof(ValueType);
 
+  //! 画像ステップ
+  std::size_t _Step = cv::Mat::AUTO_STEP;
   //! 画像バッファサイズ
   cv::Size _Size = {};
   //! 画像バッファ
@@ -104,19 +108,21 @@ struct ImageBuffer_<Alloc_, I> {
 /// 実装の特殊化
 /// </summary>
 /// <remarks>パラメータリストが複数</remarks>
-template <template <typename...> class Alloc_, typename I, typename... Args>
-struct ImageBuffer_<Alloc_, I, Args...> : ImageBuffer_<Alloc_, Args...> {
+template <typename BufferType, typename I, typename... Args>
+struct ImageBuffer_<BufferType, I, Args...> : ImageBuffer_<BufferType, Args...> {
   //! 次のバッファ
-  using Tail = ImageBuffer_<Alloc_, Args...>;
+  using Tail = ImageBuffer_<BufferType, Args...>;
   //! 画像タイプ
   using ImageType = typename I::ImageType;
   //! 画像の要素タイプ
   using ValueType = typename I::ValueType;
-  //! チャンネルタイプ
-  using ChannelType = typename I::ChannelType;
-  //! バッファタイプ
-  using BufferType = std::vector<ValueType, Alloc_<ValueType>>;
+  //! チャンネル
+  static constexpr auto Channel = typename I::ChannelType::value;
+  //! 要素のバイトサイズ
+  static constexpr auto ElemtnSize = sizeof(ValueType);
 
+  //! 画像ステップ
+  std::size_t _Step = cv::Mat::AUTO_STEP;
   //! 画像バッファサイズ
   cv::Size _Size = {};
   //! 画像バッファ
@@ -180,86 +186,22 @@ struct FindImage_ : FindImageImpl_<T, B, std::is_same<T, typename B::ImageType>:
 /// 画像コレクションクラス
 /// </summary>
 template <template <typename...> class Alloc_, typename I, typename... Args>
-class _ImageCollection_ : public detail::DuplicateCheck_<std::tuple<>, I, Args...>,
-                          detail::ImageBuffer_<Alloc_, I, Args...> {
+class _ImageCollection_
+    : public detail::DuplicateCheck_<std::tuple<>, I, Args...>,
+      detail::ImageBuffer_<std::vector<std::uint8_t, Alloc_<std::uint8_t>>, I, Args...> {
+  ////! キャッシュアライメントの有効・無効
+  //static constexpr auto EnableCacheAlign =
+  //    std::is_same<Alloc_<std::uint8_t>, tbb::cache_aligned_allocator<std::uint8_t>>::value;
+  //! バッファタイプ
+  using BufferType = std::vector<std::uint8_t, Alloc_<std::uint8_t>>;
   //! バッファ本体タイプ
-  using BufferBodyType = detail::ImageBuffer_<Alloc_, I, Args...>;
-
- public:
+  using BufferBodyType = detail::ImageBuffer_<BufferType, I, Args...>;
   //! 画像種別enumタイプ
   using ImageType = typename I::Type;
-
- private:
   //! 画像バッファタイプ
   template <ImageType T>
   using ImageBufferType = typename detail::FindImage_<std::integral_constant<ImageType, T>,
                                                       BufferBodyType>::ImageBufferType;
-
- public:
-  //! 画像の要素タイプ
-  template <ImageType T>
-  using ValueType = typename ImageBufferType<T>::ValueType;
-
-  /// <summary>
-  /// チャンネル数取得
-  /// </summary>
-  /// <returns>チャンネル数</returns>
-  template <ImageType T>
-  static constexpr int Channel() {
-    return ImageBufferType<T>::ChannelType::value;
-  }
-
-  //! 画像要素のcv::Vecタイプ
-  template <ImageType T>
-  using VecType = cv::Vec<ValueType<T>, Channel<T>()>;
-
-  /// <summary>
-  /// cv::Matのタイプ取得
-  /// </summary>
-  /// <returns>cv::Matのタイプ</returns>
-  template <ImageType T>
-  static constexpr int Type() {
-    return cv::Type<ValueType<T>, Channel<T>()>();
-  }
-
- private:
-  /// <summary>
-  /// サイズ取得
-  /// </summary>
-  /// <returns>サイズ</returns>
-  template <ImageType T>
-  typename cv::Size& Size() {
-    return ImageBufferType<T>::_Size;
-  }
-
-  /// <summary>
-  /// サイズ取得
-  /// </summary>
-  /// <returns>サイズ</returns>
-  /// <remarks>const用</remarks>
-  template <ImageType T>
-  const typename cv::Size& Size() const {
-    return ImageBufferType<T>::_Size;
-  }
-
-  /// <summary>
-  /// バッファ取得
-  /// </summary>
-  /// <returns>バッファ</returns>
-  template <ImageType T>
-  typename ImageBufferType<T>::BufferType& Buffer() {
-    return ImageBufferType<T>::_Buffer;
-  }
-
-  /// <summary>
-  /// バッファ取得
-  /// </summary>
-  /// <returns>バッファ</returns>
-  /// <remarks>const用</remarks>
-  template <ImageType T>
-  const typename ImageBufferType<T>::BufferType& Buffer() const {
-    return ImageBufferType<T>::_Buffer;
-  }
 
 #pragma region 複数画像初期化
 
@@ -306,6 +248,41 @@ class _ImageCollection_ : public detail::DuplicateCheck_<std::tuple<>, I, Args..
 #pragma endregion
 
  public:
+  //! 画像の要素タイプ
+  template <ImageType T>
+  using ValueType = typename ImageBufferType<T>::ValueType;
+
+  /// <summary>
+  /// チャンネル数取得
+  /// </summary>
+  /// <returns>チャンネル数</returns>
+  template <ImageType T>
+  static constexpr int Channel() {
+    return ImageBufferType<T>::Channel;
+  }
+
+  /// <summary>
+  /// 要素サイズ取得
+  /// </summary>
+  /// <returns>要素サイズ</returns>
+  template <ImageType T>
+  static constexpr int ElemtnSize() {
+    return ImageBufferType<T>::ElemtnSize;
+  }
+
+  //! 画像要素のcv::Vecタイプ
+  template <ImageType T>
+  using VecType = cv::Vec<ValueType<T>, Channel<T>()>;
+
+  /// <summary>
+  /// cv::Matのタイプ取得
+  /// </summary>
+  /// <returns>cv::Matのタイプ</returns>
+  template <ImageType T>
+  static constexpr int Type() {
+    return cv::Type<ValueType<T>, Channel<T>()>();
+  }
+
 #pragma region デフォルトメソッド定義
 
   /// <summary>
@@ -358,10 +335,24 @@ class _ImageCollection_ : public detail::DuplicateCheck_<std::tuple<>, I, Args..
   /// <param name="newSize">新しいサイズ</param>
   template <ImageType T>
   void Resize(const cv::Size& newSize) {
-    auto& size = this->Size<T>();
-    auto& buf = this->Buffer<T>();
+    // キャッシュライン
+    static const std::size_t CacheLine = tbb::internal::NFS_GetLineSize();
+    static const std::size_t CacheLineM1 = CacheLine - 1;
+
+    // 画像情報
+    using ImgBufType = ImageBufferType<T>;
+    static constexpr auto channel = ImgBufType::Channel;
+    static constexpr auto elemSize = ImgBufType::ElemtnSize;
+    static constexpr auto coeff = channel * elemSize;
+    ImgBufType& imgBuf = *this;
+    auto& step = imgBuf._Step;
+    auto& size = imgBuf._Size;
+    auto& buf = imgBuf._Buffer;
+
+    // ステップ、サイズ、バッファ初期化
+    step = (((newSize.width * coeff) + CacheLineM1) / CacheLine) * CacheLine;
     size = newSize;
-    buf.assign(size.area() * Channel<T>(), ValueType<T>(0));
+    buf.assign(step * size.height, std::uint8_t(0));
   }
 
   /// <summary>
@@ -377,9 +368,15 @@ class _ImageCollection_ : public detail::DuplicateCheck_<std::tuple<>, I, Args..
   /// </summary>
   template <ImageType T>
   cv::Mat Mat() {
-    const auto& size = this->Size<T>();
-    auto& buf = this->Buffer<T>();
-    return {size, Type<T>(), &buf[0]};
+    using ImgBufType = ImageBufferType<T>;
+    using ValType = typename ImgBufType::ValueType;
+    static constexpr auto channel = ImgBufType::Channel;
+    static constexpr auto type = cv::Type<ValType, channel>();
+    ImgBufType& imgBuf = *this;
+    const auto& step = imgBuf._Step;
+    const auto& size = imgBuf._Size;
+    auto& buf = imgBuf._Buffer;
+    return {size, type, &buf[0], step};
   }
 
   /// <summary>
@@ -388,9 +385,35 @@ class _ImageCollection_ : public detail::DuplicateCheck_<std::tuple<>, I, Args..
   /// <remarks>const用</remarks>
   template <ImageType T>
   const cv::Mat Mat() const {
-    const auto& size = this->Size<T>();
-    const auto& buf = this->Buffer<T>();
-    return {size, Type<T>(), const_cast<ValueType<T>*>(&buf[0])};
+    using ImgBufType = ImageBufferType<T>;
+    using ValType = typename ImgBufType::ValueType;
+    static constexpr auto channel = ImgBufType::Channel;
+    static constexpr auto type = cv::Type<ValType, channel>();
+    const ImgBufType& imgBuf = *this;
+    const auto& step = imgBuf._Step;
+    const auto& size = imgBuf._Size;
+    const auto& buf = imgBuf._Buffer;
+    return {size, type, const_cast<std::uint8_t*>(&buf[0]), step};
+  }
+
+  /// <summary>
+  /// ステップ取得
+  /// </summary>
+  /// <returns>ステップ</returns>
+  /// <remarks>const用</remarks>
+  template <ImageType T>
+  std::size_t GetStep() const {
+    return ImageBufferType<T>::_Step;
+  }
+
+  /// <summary>
+  /// サイズ取得
+  /// </summary>
+  /// <returns>サイズ</returns>
+  /// <remarks>const用</remarks>
+  template <ImageType T>
+  const cv::Size& GetSize() const {
+    return ImageBufferType<T>::_Size;
   }
 
   /// <summary>
@@ -398,7 +421,7 @@ class _ImageCollection_ : public detail::DuplicateCheck_<std::tuple<>, I, Args..
   /// </summary>
   template <ImageType T>
   bool Empty() const {
-    const auto& buf = this->Buffer<T>();
+    const auto& buf = ImageBufferType<T>::_Buffer;
     return buf.empty();
   }
 };
