@@ -508,14 +508,33 @@ class ImageCollectionImpl_
 #pragma region friend宣言
 
   /// <summary>
+  /// ハッシュ関数のフレンド宣言
+  /// </summary>
+  /// <param name="rhs">[in] ハッシュを計算する対象</param>
+  /// <returns>ハッシュ値</returns>
+  /// <remarks>boost::hash でハッシュ値を取得出来るようにする。</remarks>
+  friend std::size_t hash_value(const ImageCollectionImpl_& rhs) {
+    std::size_t hash = 0;
+    detail::Recursive<BufferBodyType>(rhs, [&hash](const auto& imgBuf) {
+      boost::hash_combine(hash, imgBuf._Step);
+      boost::hash_combine(hash, imgBuf._Size);
+
+      using ImgBufType = std::remove_reference_t<std::remove_cv_t<decltype(imgBuf)>>;
+      if (ImgBufType::DumpImage) {
+        boost::hash_combine(hash, imgBuf._Buffer);
+      }
+    });
+    return hash;
+  }
+
+  /// <summary>
   /// 等値比較演算子のフレンド宣言
   /// </summary>
   /// <param name="lhs">[in] 比較対象</param>
   /// <param name="rhs">[in] 比較対象</param>
   /// <returns>比較結果</returns>
   friend bool operator==(const ImageCollectionImpl_& lhs, const ImageCollectionImpl_& rhs) {
-    const boost::hash<ImageCollectionImpl_> hasher;
-    return hasher(lhs) == hasher(rhs);
+    return hash_value(lhs) == hash_value(rhs);
   }
 
   /// <summary>
@@ -527,25 +546,8 @@ class ImageCollectionImpl_
   template <typename charT, typename traits>
   friend std::basic_ostream<charT, traits>& operator<<(std::basic_ostream<charT, traits>& os,
                                                        const ImageCollectionImpl_& rhs) {
-    os << boost::hash<ImageCollectionImpl_>()(rhs);
+    os << hash_value(rhs);
     return os;
-  }
-
-  /// <summary>
-  /// ハッシュ関数のフレンド宣言
-  /// </summary>
-  /// <param name="rhs">[in] ハッシュを計算する対象</param>
-  /// <returns>ハッシュ値</returns>
-  /// <remarks>boost::hashでハッシュ値を取得出来る。</remarks>
-  friend std::size_t hash_value(const ImageCollectionImpl_& rhs) {
-    std::size_t hash = 0;
-    detail::Recursive<BufferBodyType>(rhs, [&hash](const auto& imgBuf) {
-      const auto& step = imgBuf._Step;
-      const auto& size = imgBuf._Size;
-      boost::hash_combine(hash, step);
-      boost::hash_combine(hash, size);
-    });
-    return hash;
   }
 
   //! @name シリアライズ用設定
@@ -697,6 +699,22 @@ class ImageCollectionImpl_
     detail::Recursive<BufferBodyType>(
         *this, [&newSize, this](auto& imgBuf) { this->ResizeImpl(newSize, imgBuf); });
   }
+
+  /// <summary>
+  /// 初期化
+  /// </summary>
+  /// <param name="newSize">新しいサイズ</param>
+  /// <remarks>複数のパラメータリストに対してリサイズを実行する。</remarks>
+  template <ImageType... Args>
+  void Init(const int width, const int height) {
+    this->Init<Args...>({width, height});
+  }
+
+  /// <summary>
+  /// 初期化
+  /// </summary>
+  /// <param name="newSize">新しいサイズ</param>
+  void Init(const int width, const int height) { this->Init({width, height}); }
 
   /// <summary>
   /// クリア
