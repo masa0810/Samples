@@ -7,10 +7,13 @@
 MSVC_ALL_WARNING_PUSH
 
 #include <cstddef>
+#include <cmath>
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <ostream>
+#include <tuple>
 #include <type_traits>
 #include <vector>
 
@@ -153,37 +156,20 @@ struct Table_ {
   }
 };
 
-/// <summary>
-/// 1次元の距離変換
-/// </summary>
-/// <param name="size">[in] サイズ</param>
-/// <param name="byteStep">[in] ステップ(byte)</param>
-/// <param name="f">[in] 入力データのポインタ</param>
-/// <param name="ptrD0">[out] 出力データのポインタ</param>
-/// <param name="ptrI0">[out] 最短インデックスのポインタ</param>
-/// <param name="v">[out] インデックスバッファのポインタ</param>
-/// <param name="ptrZ0">[out] 一時バッファのポインタ</param>
-/// @tparam T 入出力・一時バッファの型
-template <typename T>
-void TransformSimple1D(const T* const sqrTbl, const int* const satTbl, const int size,
-                       const int byteStep, const T* const f, T* ptrD0, int* ptrI0, int* const v) {
-  const int sizeM1 = size - 1;
-  {
-    const T* ptrF = f + sizeM1;
-    int* ptrV = v + sizeM1;
-    int dist = sizeM1;
-    for (auto i = sizeM1; i >= 0; --i, --ptrF, --ptrV) {
-      *ptrV = dist = (*ptrF) ? (dist + 1) : 0;
-    }
+template <typename T, template <typename...> class Alloc_>
+std::tuple<std::vector<int, Alloc_<int>>&, std::vector<T, Alloc_<T>>&> GetTlsBuffer(
+    const int bufSize) {
+  using IdxBufType = std::vector<int, Alloc_<int>>;
+  using TmpBufType = std::vector<T, Alloc_<T>>;
+  thread_local auto _bufSize = 0;
+  thread_local IdxBufType bufIdx;
+  thread_local TmpBufType bufTmp;
+  if (_bufSize < bufSize) {
+    _bufSize = bufSize;
+    bufIdx.resize(_bufSize);
+    bufTmp.resize(_bufSize << 1);
   }
-  {
-    int* ptrV = v;
-    int dist = sizeM1;
-    for (auto i = 0; i < size; ++i, ++ptrV, ptrD0 = cv::PtrByteInc(ptrD0, byteStep)) {
-      *ptrV = dist = dist + 1 - satTbl[dist - *ptrV];
-      *ptrD0 = sqrTbl[dist];
-    }
-  }
+  return std::make_tuple(std::ref(bufIdx), std::ref(bufTmp));
 }
 
 /// <summary>
@@ -197,9 +183,66 @@ void TransformSimple1D(const T* const sqrTbl, const int* const satTbl, const int
 /// <param name="v">[out] インデックスバッファのポインタ</param>
 /// <param name="ptrZ0">[out] 一時バッファのポインタ</param>
 /// @tparam T 入出力・一時バッファの型
-template <typename T>
+template <typename T, typename Ts, typename F>
+void TransformSimple1D(const T* const sqrTbl, const int* const satTbl, const int size,
+                       const int byteStep, const Ts* const s, T* ptrD0, int* ptrI0, int* const v,
+                       const F& binarization) {
+  const auto sizeM1 = size - 1;
+  {
+    const auto* ptrS = s + sizeM1;
+    auto* ptrV = v + sizeM1;
+    auto dist = sizeM1;
+    for (auto i = sizeM1; i >= 0; --i, --ptrS, --ptrV) {
+      *ptrV = dist = binarization(*ptrS) ? (dist + 1) : 0;
+    }
+  }
+  {
+    auto* ptrV = v;
+    auto dist = sizeM1;
+    for (auto i = 0; i < size; ++i, ++ptrV, ptrD0 = cv::PtrByteInc(ptrD0, byteStep), ++ptrI0) {
+      *ptrV = dist = dist + 1 - satTbl[dist - *ptrV];
+      //*ptrD0 = sqrTbl[dist];
+      *ptrD0 = dist * dist;
+      *ptrI0 = *ptrV;
+    }
+  }
+}
+
+/// <summary>
+/// 1次元の距離変換(並列実行対応)
+/// </summary>
+/// <param name="bufSize">[in] バッファサイズ</param>
+/// <param name="size">[in] サイズ</param>
+/// <param name="byteStep">[in] ステップ(byte)</param>
+/// <param name="f">[in] 入力データのポインタ</param>
+/// <param name="ptrD0">[out] 出力データのポインタ</param>
+/// <param name="ptrI0">[out] 最短インデックスのポインタ</param>
+/// <remarks>距離変換処理を並列実行するために、スレッド毎のバッファを用意する。</remarks>
+/// @tparam T 入出力・一時バッファの型
+/// @tparam Alloc_ バッファのアロケータ
+template <typename T, template <typename...> class Alloc_, typename Ts, typename F>
+void TransformSimple1D(const Table_<T, Alloc_>& tbl, const int size, const int byteStep,
+                       const Ts* const s, T* ptrD0, int* ptrI0, const F& binarization) {
+  auto buf = GetTlsBuffer<T, Alloc_>(tbl.Size);
+  auto& bufIdx = std::get<0>(buf);
+  TransformSimple1D<T, Ts, F>(&tbl.Sqr[0], &tbl.Sat[tbl.SatStart], size, byteStep, s, ptrD0, ptrI0,
+                              &bufIdx[0], binarization);
+}
+
+/// <summary>
+/// 1次元の距離変換
+/// </summary>
+/// <param name="size">[in] サイズ</param>
+/// <param name="byteStep">[in] ステップ(byte)</param>
+/// <param name="f">[in] 入力データのポインタ</param>
+/// <param name="ptrD0">[out] 出力データのポインタ</param>
+/// <param name="ptrI0">[out] 最短インデックスのポインタ</param>
+/// <param name="v">[out] インデックスバッファのポインタ</param>
+/// <param name="ptrZ0">[out] 一時バッファのポインタ</param>
+/// @tparam T 入出力・一時バッファの型
+template <typename T, typename Td, typename F>
 void Transform1D(const T* const sqrTbl, const T* const invTbl, const int size, const int byteStep,
-                 const T* const f, T* ptrD0, int* ptrI0, int* const v, T* ptrZ0) {
+                 const T* const f, Td* ptrD0, int* ptrI0, int* const v, T* ptrZ0, const F& conv) {
   const auto* ptrF1 = f + 1;
   auto* ptrV0 = v;
   auto* ptrZ1 = ptrZ0 + 1;
@@ -233,7 +276,7 @@ void Transform1D(const T* const sqrTbl, const T* const invTbl, const int size, c
       ++ptrZ1;
     }
     const auto& refV = *ptrV0;
-    *ptrD0 = sqrTbl[std::abs(q - refV)] + f[refV];
+    *ptrD0 = cv::saturate_cast<Td>(conv(sqrTbl[std::abs(q - refV)] + f[refV]));
     *ptrI0 = refV;
   }
 }
@@ -250,51 +293,14 @@ void Transform1D(const T* const sqrTbl, const T* const invTbl, const int size, c
 /// <remarks>距離変換処理を並列実行するために、スレッド毎のバッファを用意する。</remarks>
 /// @tparam T 入出力・一時バッファの型
 /// @tparam Alloc_ バッファのアロケータ
-template <typename T, template <typename...> class Alloc_>
-void Transform1D(const int mode, const int bufSize, const int size = 0, const int byteStep = 0,
-                 const T* const f = nullptr, T* ptrD0 = nullptr, int* ptrI0 = nullptr) {
-  thread_local auto _bufSize = 0;
-  thread_local std::vector<int, Alloc_<int>> bufIdx;
-  thread_local std::vector<T, Alloc_<T>> buf;
-  thread_local std::vector<T, Alloc_<T>> sqrTbl;
-  thread_local std::vector<int, Alloc_<int>> satTbl;
-  thread_local std::vector<T, Alloc_<T>> invTbl;
-  thread_local int satTblStartIdx = 0;
-  if (_bufSize < bufSize) {
-    _bufSize = bufSize;
-    bufIdx.resize(_bufSize);
-    buf.resize(_bufSize << 1);
-    sqrTbl.resize(_bufSize << 1);
-    satTbl.resize(_bufSize * 3 + 1);
-    invTbl.resize(_bufSize);
-    satTblStartIdx = (_bufSize << 1) + 1;
-    auto* ptrSqTbl = &sqrTbl[0];
-    auto* ptrSatTbl = &satTbl[0];
-    auto* ptrInvTbl = &invTbl[0];
-    for (auto i = 0; i < _bufSize; ++i, ++ptrSqTbl, ++ptrSatTbl, ++ptrInvTbl) {
-      *ptrSqTbl = i * i;
-      *ptrSatTbl = 0;
-      *ptrInvTbl = T(0.5) / i;
-    }
-    for (auto i = 0; i < _bufSize; ++i, ++ptrSqTbl, ++ptrSatTbl) {
-      *ptrSqTbl = std::numeric_limits<T>::max();
-      *ptrSatTbl = 0;
-    }
-    for (auto i = 0; i <= _bufSize; ++i, ++ptrSatTbl) {
-      *ptrSatTbl = i;
-    }
-  }
-
-  switch (mode) {
-    case 1:
-      TransformSimple1D<T>(&sqrTbl[0], &satTbl[satTblStartIdx], size, byteStep, f, ptrD0, ptrI0,
-                           &bufIdx[0]);
-      break;
-    case 2:
-      Transform1D<T>(&sqrTbl[0], &invTbl[0], size, byteStep, f, ptrD0, ptrI0, &bufIdx[0],
-                     &buf[size]);
-      break;
-  }
+template <typename T, template <typename...> class Alloc_, typename Td, typename F>
+void Transform1D(const Table_<T, Alloc_>& tbl, const int size, const int byteStep, const T* const f,
+                 T* ptrD0, int* ptrI0, const F& conv) {
+  auto buf = GetTlsBuffer<T, Alloc_>(tbl.Size);
+  auto& bufIdx = std::get<0>(buf);
+  auto& bufTmp = std::get<1>(buf);
+  Transform1D<T>(&tbl.Sqr[0], &tbl.Inv[0], size, byteStep, f, ptrD0, ptrI0, &bufIdx[0],
+                 &bufTmp[size], conv);
 }
 
 /// <summary>
@@ -322,77 +328,34 @@ void Transform1D(const int mode, const int bufSize, const int size = 0, const in
 /// @tparam P パーティショナの型
 /// @tparam Ts 入力画像の型
 /// @tparam F 2値化関数オブジェクトの型
-template <typename T, template <typename...> class Alloc_, typename P, typename Ts, typename F>
-void Transform2D(const int bufSize, const cv::Mat& src, cv::Mat& sqDist, cv::Mat idxX, cv::Mat idxY,
-                 cv::Mat bufSqDist, P& paX, P& paY, const F& binarization) {
+template <typename T, template <typename...> class Alloc_, typename P, typename Ts, typename Td,
+          typename Fb, typename Fc>
+void Transform2D(const Table_<T, Alloc_>& tbl, const cv::Mat& src, cv::Mat& dst, cv::Mat idxX,
+                 cv::Mat idxY, cv::Mat bufSqDist, P& paX, P& paY, const Fb& binarization,
+                 const Fc& conv) {
   // 行単位で並列化
   tbb::parallel_for(0, src.rows,
-                    [bufSize, size = src.cols, byteStep = bufSqDist.step[0], &src, &sqDist, &idxX,
-                     &bufSqDist, &binarization](const auto y) {
-                      // 入力画像を2値画像に変換
-                      const auto* ptrSrc = src.ptr<Ts>(y);
-                      auto* const ptrSqDist = sqDist.ptr<T>(y);
-                      auto* ptrDst = ptrSqDist;
-                      for (auto x = 0; x < size; ++x, ++ptrSrc, ++ptrDst)
-                        *ptrDst = binarization(*ptrSrc) ? std::numeric_limits<T>::max() : 0;
+                    [tbl, size = src.cols, byteStep = bufSqDist.step[0], &src, &idxX, &bufSqDist,
+                     &binarization](const auto y) {
                       // 距離変換
+                      const auto* const ptrSrc = src.ptr<Ts>(y);
                       auto* ptrBufSqDist = bufSqDist.ptr<T>(0, y);
                       auto* ptrIdxX = idxX.ptr<int>(y);
-                      Transform1D<T, Alloc_>(1, bufSize, size, byteStep, ptrSqDist, ptrBufSqDist,
-                                             ptrIdxX);
+                      TransformSimple1D<T, Alloc_, Ts, Fb>(tbl, size, byteStep, ptrSrc,
+                                                           ptrBufSqDist, ptrIdxX, binarization);
                     },
                     paX);
 
   // 列単位で並列化
-  tbb::parallel_for(0, src.cols,
-                    [bufSize, size = src.rows, byteStep = sqDist.step[0], &sqDist, &idxY,
-                     &bufSqDist](const auto x) {
-                      const auto* const ptrBufSqDist = bufSqDist.ptr<T>(x);
-                      auto* ptrSqDist = sqDist.ptr<T>(0, x);
-                      auto* ptrIdxY = idxY.ptr<int>(x);
-                      Transform1D<T, Alloc_>(2, bufSize, size, byteStep, ptrBufSqDist, ptrSqDist,
-                                             ptrIdxY);
-                    },
-                    paY);
-}
-
-template <typename T, template <typename...> class Alloc_, typename P>
-void Initialize(const int bufSize, const cv::Size& size, P& paX, P& paY) {
-  // 行単位で並列化
-  tbb::parallel_for(0, size.height,
-                    [bufSize](const auto y) { detail::Transform1D<T, Alloc_>(0, bufSize); }, paX);
-
-  // 列単位で並列化
-  tbb::parallel_for(0, size.width,
-                    [bufSize](const auto x) { detail::Transform1D<T, Alloc_>(0, bufSize); }, paY);
-}
-
-/// <summary>
-/// 出力データ変換
-/// </summary>
-/// <param name="sqDist">[in] 二乗距離</param>
-/// <param name="dst">[out] 出力</param>
-/// <param name="conv">[in] 変換関数</param>
-/// <param name="pa">[in] パーティショナ</param>
-/// <remarks>
-/// <para>距離変換結果はT型の二乗距離の形で出力されるため、</para>
-/// <para>任意の形式で出力するためには変換処理を施す必要がある。</para>
-/// <para>この関数では任意の関数オブジェクトによって変換処理を指定することができる。</para>
-/// </remarks>
-/// @tparam T 距離変換結果(二乗距離)の型
-/// @tparam P パーティショナの型
-/// @tparam Td 出力画像の型
-/// @tparam F 変換関数オブジェクト
-template <typename T, typename P, typename Td, typename F>
-void ConvertTo(const cv::Mat& sqDist, cv::Mat& dst, const F& conv, P& pa) {
-  tbb::parallel_for(0, dst.rows,
-                    [&sqDist, &dst, &conv, e = dst.cols](const auto y) {
-                      const auto* ptrSqDist = sqDist.ptr<T>(y);
-                      auto* ptrDst = dst.ptr<Td>(y);
-                      for (auto x = 0; x < e; ++x, ++ptrSqDist, ++ptrDst)
-                        *ptrDst = conv(*ptrSqDist);
-                    },
-                    pa);
+  tbb::parallel_for(
+      0, dst.cols,
+      [tbl, size = dst.rows, byteStep = dst.step[0], &dst, &idxY, &bufSqDist, &conv](const auto x) {
+        const auto* const ptrBufSqDist = bufSqDist.ptr<T>(x);
+        auto* ptrDst = dst.ptr<T>(0, x);
+        auto* ptrIdxY = idxY.ptr<int>(x);
+        Transform1D<T, Alloc_, Td, Fc>(tbl, size, byteStep, ptrBufSqDist, ptrDst, ptrIdxY, conv);
+      },
+      paY);
 }
 
 }  // namespace detail
@@ -423,7 +386,7 @@ class DistanceTransform_ : public detail::NonCopyMembers_<P, P>,
 
  private:
   //! バッファの種別定義
-  enum class Buf { Sq, X, Y, Buf };
+  enum class Buf { X, Y, Buf };
   //! バッファ定義クラス
   //@tparam I 種別
   //@tparam V 値の型
@@ -432,14 +395,13 @@ class DistanceTransform_ : public detail::NonCopyMembers_<P, P>,
   template <Buf I, typename V, int C = 1, bool D = false>
   using I_ = commonutility::ImageSetting_<Buf, I, V, C, D>;
   //! バッファタイプ
-  using BufType =
-      commonutility::ImageCollectionImpl_<Alloc_, I_<Buf::Sq, FloatType>, I_<Buf::X, int>,
-                                          I_<Buf::Y, int>, I_<Buf::Buf, FloatType>>;
+  using BufType = commonutility::ImageCollectionImpl_<Alloc_, I_<Buf::X, int>, I_<Buf::Y, int>,
+                                                      I_<Buf::Buf, FloatType>>;
   //! テーブルタイプ
-  using TableType = std::vector<FloatType, Alloc_<FloatType>>;
+  using TableType = detail::Table_<FloatType, Alloc_>;
 
-  //! TLS用バッファサイズ
-  int m_bufSize = 0;
+  //! 計算テーブル
+  TableType m_table = {};
   //! 計算バッファ
   BufType m_imgBuf = {};
 
@@ -492,55 +454,6 @@ class DistanceTransform_ : public detail::NonCopyMembers_<P, P>,
 
 #pragma endregion
 
-  /// <summary>
-  /// 2値化&2次元の距離変換
-  /// </summary>
-  /// <param name="src">[in] 入力画像</param>
-  /// <param name="sqDist">[out] 出力画像</param>
-  /// <param name="binarization">[in] 入力画像を2値化する関数</param>
-  /// <remarks>
-  /// <para>実装の詳細は detail::Transform2D を参照</para>
-  /// <para>二乗距離を返す、かつ、出力画像の値型が内部計算型と一致する場合専用</para>
-  /// </remarks>
-  /// @tparam Ts 入力画像の型
-  /// @tparam F 2値化関数オブジェクトの型
-  template <typename Ts, typename F>
-  void TransformSqDist(const cv::Mat& src, cv::Mat& sqDist, const F& binarization) {
-    detail::Transform2D<FloatType, Alloc_, PartitionerType, Ts, F>(
-        m_bufSize, src, sqDist, m_imgBuf.Mat<Buf::X>(), m_imgBuf.Mat<Buf::Y>(),
-        m_imgBuf.Mat<Buf::Buf>(), std::get<0>(NcMembers), std::get<1>(NcMembers), binarization);
-  }
-
-  /// <summary>
-  /// 2値化&2次元の距離変換
-  /// </summary>
-  /// <param name="src">[in] 入力画像</param>
-  /// <param name="binarization">[in] 入力画像を2値化する関数</param>
-  /// <returns>距離変換結果(二乗距離)</returns>
-  /// <remarks>実装の詳細は detail::Transform2D を参照</remarks>
-  /// @tparam Ts 入力画像の型
-  /// @tparam F 2値化関数オブジェクトの型
-  template <typename Ts, typename F>
-  cv::Mat TransformSqDist(const cv::Mat& src, const F& binarization) {
-    auto sqDist = m_imgBuf.Mat<Buf::Sq>();
-    this->TransformSqDist<Ts, F>(src, sqDist, binarization);
-    return sqDist;
-  }
-
-  /// <summary>
-  /// 出力データ変換
-  /// </summary>
-  /// <param name="sqDist">[in] 二乗距離</param>
-  /// <param name="dst">[out] 出力</param>
-  /// <param name="conv">[in] 変換関数</param>
-  /// <remarks>実装の詳細は detail::ConvertTo を参照</remarks>
-  /// @tparam Td 出力画像の型
-  /// @tparam F 変換関数オブジェクト
-  template <typename Td, typename F>
-  void ConvertTo(const cv::Mat& sqDist, cv::Mat& dst, const F& conv) {
-    detail::ConvertTo<FloatType, PartitionerType, Td, F>(sqDist, dst, conv, std::get<0>(NcMembers));
-  }
-
  public:
 #pragma region デフォルトメソッド定義
 
@@ -582,11 +495,9 @@ class DistanceTransform_ : public detail::NonCopyMembers_<P, P>,
   /// <param name="size">処理画像サイズ</param>
   /// <remarks>処理の最適化のため、画像サイズを事前に指定しておかなければならない。</remarks>
   void Init(const cv::Size& size) {
-    m_bufSize = std::max(size.width, size.height);
-    m_imgBuf.Init<Buf::Sq, Buf::X>(size);
+    m_table.Init(size);
+    m_imgBuf.Init<Buf::X>(size);
     m_imgBuf.Init<Buf::Y, Buf::Buf>(size.height, size.width);
-    detail::Initialize<FloatType, Alloc_, PartitionerType>(m_bufSize, size, std::get<0>(NcMembers),
-                                                           std::get<1>(NcMembers));
   }
 
   /// <summary>
@@ -603,7 +514,9 @@ class DistanceTransform_ : public detail::NonCopyMembers_<P, P>,
   /// @tparam Fc 変換関数オブジェクト
   template <typename Ts, typename Td, typename Fb, typename Fc>
   void Calc(const cv::Mat& src, cv::Mat& dst, const Fb& binarization, const Fc& conv) {
-    this->ConvertTo<Td, Fc>(this->TransformSqDist<Ts, Fb>(src, binarization), dst, conv);
+    detail::Transform2D<FloatType, Alloc_, PartitionerType, Ts, Td, Fb, Fc>(
+        m_table, src, dst, m_imgBuf.Mat<Buf::X>(), m_imgBuf.Mat<Buf::Y>(), m_imgBuf.Mat<Buf::Buf>(),
+        std::get<0>(NcMembers), std::get<1>(NcMembers), binarization, conv);
   }
 
   /// <summary>
@@ -612,18 +525,13 @@ class DistanceTransform_ : public detail::NonCopyMembers_<P, P>,
   /// <param name="src">[in] 入力画像</param>
   /// <param name="dst">[dst] 出力画像</param>
   /// <param name="binarization">[in] 入力画像を2値化する関数</param>
-  /// <remarks>
-  /// <para>二乗距離のまま返すバージョン</para>
-  /// <para>事前に Init を実行し、初期化を行っておかなければならない。</para>
-  /// </remarks>
+  /// <remarks>事前に Init を実行し、初期化を行っておかなければならない。</remarks>
   /// @tparam Ts 入力画像の型
   /// @tparam Td 出力画像の型
   /// @tparam F 2値化関数オブジェクトの型
-  template <typename Ts, typename Td, typename F,
-            std::enable_if_t<!std::is_same<Td, FloatType>{}, std::nullptr_t> = nullptr>
+  template <typename Ts, typename Td, typename F>
   void Calc(const cv::Mat& src, cv::Mat& dst, const F& binarization) {
-    this->ConvertTo<Td>(this->TransformSqDist<Ts, F>(src, binarization), dst,
-                        [](const auto val) { return cv::saturate_cast<Td>(val); });
+    this->Calc<Ts, Td, F>(src, dst, binarization, [](const auto val) { return std::sqrt(val); });
   }
 
   /// <summary>
@@ -632,17 +540,41 @@ class DistanceTransform_ : public detail::NonCopyMembers_<P, P>,
   /// <param name="src">[in] 入力画像</param>
   /// <param name="dst">[dst] 出力画像</param>
   /// <param name="binarization">[in] 入力画像を2値化する関数</param>
-  /// <remarks>
-  /// <para>二乗距離のまま返すバージョン</para>
-  /// <para>事前に Init を実行し、初期化を行っておかなければならない。</para>
-  /// </remarks>
+  /// <remarks>事前に Init を実行し、初期化を行っておかなければならない。</remarks>
+  /// @tparam Ts 入力画像の型
+  /// @tparam Td 出力画像の型
+  template <typename Ts, typename Td>
+  void Calc(const cv::Mat& src, cv::Mat& dst) {
+    this->Calc<Ts, Td>(src, dst, [](const auto val) { return val != 0; });
+  }
+
+  /// <summary>
+  /// 距離変換(2乗距離)
+  /// </summary>
+  /// <param name="src">[in] 入力画像</param>
+  /// <param name="dst">[dst] 出力画像</param>
+  /// <param name="binarization">[in] 入力画像を2値化する関数</param>
+  /// <remarks>事前に Init を実行し、初期化を行っておかなければならない。</remarks>
   /// @tparam Ts 入力画像の型
   /// @tparam Td 出力画像の型
   /// @tparam F 2値化関数オブジェクトの型
-  template <typename Ts, typename Td, typename F,
-            std::enable_if_t<std::is_same<Td, FloatType>{}, std::nullptr_t> = nullptr>
-  void Calc(const cv::Mat& src, cv::Mat& dst, const F& binarization) {
-    this->TransformSqDist<Ts, F>(src, dst, binarization);
+  template <typename Ts, typename Td, typename F>
+  void CalcSq(const cv::Mat& src, cv::Mat& dst, const F& binarization) {
+    this->Calc<Ts, Td, F>(src, dst, binarization, [](auto val) { return val; });
+  }
+
+  /// <summary>
+  /// 距離変換(2乗距離)
+  /// </summary>
+  /// <param name="src">[in] 入力画像</param>
+  /// <param name="dst">[dst] 出力画像</param>
+  /// <param name="binarization">[in] 入力画像を2値化する関数</param>
+  /// <remarks>事前に Init を実行し、初期化を行っておかなければならない。</remarks>
+  /// @tparam Ts 入力画像の型
+  /// @tparam Td 出力画像の型
+  template <typename Ts, typename Td>
+  void CalcSq(const cv::Mat& src, cv::Mat& dst) {
+    this->CalcSq<Ts, Td>(src, dst, [](const auto val) { return val != 0; });
   }
 };
 
