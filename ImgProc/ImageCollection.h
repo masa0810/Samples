@@ -42,7 +42,7 @@ namespace commonutility {
 /// @tparam V 値タイプ
 /// @tparam C チャンネル数
 /// @tparam D 画像保存フラグ
-template <typename T, T I, typename V, int C, bool D = false>
+template <typename T, T I, typename V, int C = 1, bool D = false>
 struct ImageSetting_ {
   //! 識別タイプ
   using Type = T;
@@ -64,7 +64,7 @@ struct ImageSetting_ {
 /// @tparam V 値タイプ
 /// @tparam C チャンネル数
 /// @tparam D 画像保存フラグ
-template <int I, typename V, int C, bool D = false>
+template <int I, typename V, int C = 1, bool D = false>
 using I_ = ImageSetting_<int, I, V, C, D>;
 
 /// <summary>
