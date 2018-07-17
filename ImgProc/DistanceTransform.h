@@ -615,7 +615,43 @@ class DistanceTransform_ : public detail::NonCopyMembers_<P, P>,
   }
 };
 
-namespace old {
+}  // namespace imgproc
+
+#pragma once
+
+#include <Common/CommonDef.h>
+#include <Common/CommonFunction.h>
+#include <Common/OpenCvConfig.h>
+#include <Common/TbbConfig.h>
+
+// 全ての警告を抑制
+MSVC_ALL_WARNING_PUSH
+
+#include <cmath>
+
+#include <algorithm>
+#include <functional>
+#include <limits>
+#include <type_traits>
+#include <vector>
+
+#include <boost/serialization/access.hpp>
+#include <boost/serialization/nvp.hpp>
+#include <boost/serialization/split_member.hpp>
+
+#include <opencv2/core.hpp>
+
+// 警告抑制解除
+MSVC_WARNING_POP
+
+/// <summary>
+/// 画像処理
+/// </summary>
+namespace imgproc { namespace old {
+
+/// <summary>
+/// 距離変換
+/// </summary>
 template <typename T = double, typename P = tbb::auto_partitioner>
 class DistanceTransform_ {
  public:
@@ -623,8 +659,7 @@ class DistanceTransform_ {
 
  private:
   //! バッファは浮動小数点型のみ
-  static_assert(std::is_floating_point<T>::value,
-                "template parameter T must be floatng point type");
+  static_assert(std::is_floating_point<T>{}, "template parameter T must be floatng point type");
 
   //
   // メンバ変数
@@ -653,6 +688,31 @@ class DistanceTransform_ {
   };
   //! パーティショナー群
   Partitioners m_partitioners = {};
+
+  //! @name シリアライズ用設定
+  //@{
+  friend class boost::serialization::access;
+  BOOST_SERIALIZATION_SPLIT_MEMBER();
+  template <typename Archive>
+  void save(Archive& ar, const unsigned) const {
+    ar& boost::serialization::make_nvp("Size", m_size);
+    ar& boost::serialization::make_nvp("SqDist", m_sqDist);
+    ar& boost::serialization::make_nvp("IdxX", m_idxX);
+    ar& boost::serialization::make_nvp("IdxY", m_idxY);
+  }
+  template <typename Archive>
+  void load(Archive& ar, const unsigned) {
+    ar& boost::serialization::make_nvp("Size", m_size);
+    ar& boost::serialization::make_nvp("SqDist", m_sqDist);
+    ar& boost::serialization::make_nvp("IdxX", m_idxX);
+    ar& boost::serialization::make_nvp("IdxY", m_idxY);
+
+    const size_t bufSize = m_size.area();
+    m_bufSqDist.resize(bufSize);
+    m_bufIdx.resize(bufSize);
+    m_bufZ.resize(bufSize + std::max(m_size.width, m_size.height));
+  }
+  //@}
 
   /// <summary>
   /// 1次元の距離変換
@@ -703,8 +763,7 @@ class DistanceTransform_ {
         ++ptrZ1;
       }
       const int& refV = *ptrV0;
-      const auto qv = q - refV;
-      *ptrD0 = qv * qv + f[refV];
+      *ptrD0 = commonutility::SquareNorm(q - refV) + f[refV];
       *ptrI0 = refV;
     }
   }
@@ -724,28 +783,28 @@ class DistanceTransform_ {
                           std::vector<int>& idxY, std::vector<Tb>& work, std::vector<int>& workV,
                           std::vector<Tb>& workZ, PartitionerType& paX, PartitionerType& paY) {
     // 横方向の距離変換
-    tbb::parallel_for(0, size.height,
-                      [&](const int y) {
-                        const int idx = y * size.width;
+    tbb::tbb_for(0, size.height,
+                 [&](const int y) {
+                   const int idx = y * size.width;
 
-                        // ※vs2010のラムダ式の不具合により、template引数も記述
-                        DistanceTransform_<T, P>::Transform1D(size.width, size.height, &data[idx],
-                                                              &work[y], &idxX[idx], &workV[idx],
-                                                              &workZ[idx + y]);
-                      },
-                      paX);
+                   // ※vs2010のラムダ式の不具合により、template引数も記述
+                   DistanceTransform_<T, P>::Transform1D(size.width, size.height, &data[idx],
+                                                         &work[y], &idxX[idx], &workV[idx],
+                                                         &workZ[idx + y]);
+                 },
+                 paX);
 
     // 縦方向の距離変換
-    tbb::parallel_for(0, size.width,
-                      [&](const int x) {
-                        const int idx = x * size.height;
+    tbb::tbb_for(0, size.width,
+                 [&](const int x) {
+                   const int idx = x * size.height;
 
-                        // ※vs2010のラムダ式の不具合により、template引数も記述
-                        DistanceTransform_<T, P>::Transform1D(size.height, size.width, &work[idx],
-                                                              &data[x], &idxY[idx], &workV[idx],
-                                                              &workZ[idx + x]);
-                      },
-                      paY);
+                   // ※vs2010のラムダ式の不具合により、template引数も記述
+                   DistanceTransform_<T, P>::Transform1D(size.height, size.width, &work[idx],
+                                                         &data[x], &idxY[idx], &workV[idx],
+                                                         &workZ[idx + x]);
+                 },
+                 paY);
   }
 
   /// <summary>
@@ -757,19 +816,21 @@ class DistanceTransform_ {
   /// <remarks>平方根をしてない結果を返すメソッド</remarks>
   template <typename Ts, typename F>
   const cv::Mat TransformSqDist(const cv::Mat& src, const F& comp) {
+    Assert(src.channels() == 1 && src.size() == m_size, "Src-Data Error");
+
     // 2値データを浮動小数点型に変換
     cv::Mat buf(m_size, cv::Type<T>(), &m_sqDist[0]);
-    tbb::parallel_for(tbb::blocked_range2d<int>(0, src.rows, 0, src.cols),
-                      [&](const tbb::blocked_range2d<int>& range) {
-                        for (int y = std::begin(range.rows()); y < std::end(range.rows()); ++y) {
-                          int x = std::begin(range.cols());
-                          const Ts* ptrSrc = src.ptr<Ts>(y, x);
-                          T* ptrBuf = buf.ptr<T>(y, x);
-                          for (; x < std::end(range.cols()); ++x, ++ptrSrc, ++ptrBuf)
-                            *ptrBuf = comp(*ptrSrc) ? std::numeric_limits<T>::max() : T(0);
-                        }
-                      },
-                      m_partitioners.Pa);
+    tbb::tbb_for(src.size(),
+                 [&](const tbb::blocked_range2d<int>& range) {
+                   for (int y = std::begin(range.rows()); y < std::end(range.rows()); ++y) {
+                     int x = std::begin(range.cols());
+                     const Ts* ptrSrc = src.ptr<Ts>(y, x);
+                     T* ptrBuf = buf.ptr<T>(y, x);
+                     for (; x < std::end(range.cols()); ++x, ++ptrSrc, ++ptrBuf)
+                       *ptrBuf = comp(*ptrSrc) ? std::numeric_limits<T>::max() : T(0);
+                   }
+                 },
+                 m_partitioners.Pa);
 
     // 変換
     DistanceTransform_::Transform2D(m_size, m_sqDist, m_idxX, m_idxY, m_bufSqDist, m_bufIdx, m_bufZ,
@@ -787,23 +848,23 @@ class DistanceTransform_ {
   /// <remarks>計算結果を出力型に変換する</remarks>
   template <typename Td, typename F>
   void ConvertTo(const cv::Mat& sqDist, cv::Mat& dst, const F& conv) {
+    Assert(dst.channels() == 1 && dst.size() == m_size, "Dst-Data Error");
+
     // 出力データに変換
-    tbb::parallel_for(tbb::blocked_range2d<int>(0, dst.rows, 0, dst.cols),
-                      [&](const tbb::blocked_range2d<int>& range) {
-                        for (int y = std::begin(range.rows()); y < std::end(range.rows()); ++y) {
-                          int x = std::begin(range.cols());
-                          const T* ptrSqDist = sqDist.ptr<T>(y, x);
-                          Td* ptrDst = dst.ptr<Td>(y, x);
-                          for (; x < std::end(range.cols()); ++x, ++ptrSqDist, ++ptrDst)
-                            *ptrDst = conv(*ptrSqDist);
-                        }
-                      },
-                      m_partitioners.Pa);
+    tbb::tbb_for(dst.size(),
+                 [&](const tbb::blocked_range2d<int>& range) {
+                   for (int y = std::begin(range.rows()); y < std::end(range.rows()); ++y) {
+                     int x = std::begin(range.cols());
+                     const T* ptrSqDist = sqDist.ptr<T>(y, x);
+                     Td* ptrDst = dst.ptr<Td>(y, x);
+                     for (; x < std::end(range.cols()); ++x, ++ptrSqDist, ++ptrDst)
+                       *ptrDst = conv(*ptrSqDist);
+                   }
+                 },
+                 m_partitioners.Pa);
   }
 
  public:
-#pragma region デフォルトメソッド定義
-
   /// <summary>
   /// デフォルトコンストラクタ
   /// </summary>
@@ -812,12 +873,33 @@ class DistanceTransform_ {
   /// <summary>
   /// コピーコンストラクタ
   /// </summary>
-  DistanceTransform_(const DistanceTransform_&) = default;
+  DistanceTransform_(const DistanceTransform_& rhs)
+      : m_size(rhs.m_size),
+        m_sqDist(rhs.m_sqDist),
+        m_idxX(rhs.m_idxX),
+        m_idxY(rhs.m_idxY),
+        m_bufSqDist(rhs.m_bufSqDist),
+        m_bufIdx(rhs.m_bufIdx),
+        m_bufZ(rhs.m_bufZ) {}
+
+  void swap(DistanceTransform_& rhs) {
+    std::swap(m_size, rhs.m_size);
+    std::swap(m_sqDist, rhs.m_sqDist);
+    std::swap(m_idxX, rhs.m_idxX);
+    std::swap(m_idxY, rhs.m_idxY);
+    std::swap(m_bufSqDist, rhs.m_bufSqDist);
+    std::swap(m_bufIdx, rhs.m_bufIdx);
+    std::swap(m_bufZ, rhs.m_bufZ);
+  }
 
   /// <summary>
   /// 代入演算子
   /// </summary>
-  DistanceTransform_& operator=(const DistanceTransform_&) = default;
+  DistanceTransform_& operator=(const DistanceTransform_& rhs) {
+    DistanceTransform_ tmp = rhs;
+    this->swap(tmp);
+    return *this;
+  }
 
   /// <summary>
   /// ムーブコンストラクタ
@@ -832,9 +914,17 @@ class DistanceTransform_ {
   /// <summary>
   /// デストラクタ
   /// </summary>
-  ~DistanceTransform_() = default;
+  virtual ~DistanceTransform_() = default;
 
-#pragma endregion
+  // コンストラクタ
+  explicit DistanceTransform_(const cv::Size& size)
+      : m_size(size),
+        m_sqDist(m_size.area()),
+        m_idxX(m_size.area()),
+        m_idxY(m_size.area()),
+        m_bufSqDist(m_size.area()),
+        m_bufIdx(m_size.area()),
+        m_bufZ(m_size.area() + std::max(m_size.width, m_size.height)) {}
 
   // 初期化
   void Init(const cv::Size& size) {
@@ -849,12 +939,815 @@ class DistanceTransform_ {
     m_bufZ.resize(bufSize + std::max(m_size.width, m_size.height));
   }
 
+  // バッファサイズ取得
+  const cv::Size& GetSize() const { return m_size; }
+
+  //
+  // ベースメソッド
+  //
+
   // 距離変換
-  template <typename Ts, typename Td, typename F1, typename F2>
-  void CalcCompCast(const cv::Mat& src, cv::Mat& dst, const F1& comp, const F2& cast) {
+  template <typename Ts, typename Td>
+  void CalcCompCast(const cv::Mat& src, cv::Mat& dst,
+                    const std::function<const bool(const Ts&)>& comp,
+                    const std::function<const Td(const T&)>& cast) {
     this->ConvertTo<Td>(this->TransformSqDist<Ts>(src, comp), dst, cast);
   }
-};
-}  // namespace old
 
-}  // namespace imgproc
+  // 距離変換
+  template <typename Ts, typename F>
+  void CalcCompCast(const cv::Mat& src, cv::Mat& dst,
+                    const std::function<const bool(const Ts&)>& comp, const F& cast) {
+    switch (CV_MAT_DEPTH(dst.type())) {
+      case CV_8U:
+        this->CalcCompCast<Ts, uchar>(src, dst, comp, cast);
+        break;
+      case CV_8S:
+        this->CalcCompCast<Ts, char>(src, dst, comp, cast);
+        break;
+      case CV_16U:
+        this->CalcCompCast<Ts, ushort>(src, dst, comp, cast);
+        break;
+      case CV_16S:
+        this->CalcCompCast<Ts, short>(src, dst, comp, cast);
+        break;
+      case CV_32S:
+        this->CalcCompCast<Ts, int>(src, dst, comp, cast);
+        break;
+      case CV_32F:
+        this->CalcCompCast<Ts, float>(src, dst, comp, cast);
+        break;
+      case CV_64F:
+        this->CalcCompCast<Ts, double>(src, dst, comp, cast);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換
+  template <typename F1, typename F2>
+  void CalcCompCast(const cv::Mat& src, cv::Mat& dst, const F1& comp, const F2& cast) {
+    switch (CV_MAT_DEPTH(src.type())) {
+      case CV_8U:
+        this->CalcCompCast<uchar>(src, dst, comp, cast);
+        break;
+      case CV_8S:
+        this->CalcCompCast<char>(src, dst, comp, cast);
+        break;
+      case CV_16U:
+        this->CalcCompCast<ushort>(src, dst, comp, cast);
+        break;
+      case CV_16S:
+        this->CalcCompCast<short>(src, dst, comp, cast);
+        break;
+      case CV_32S:
+        this->CalcCompCast<int>(src, dst, comp, cast);
+        break;
+      case CV_32F:
+        this->CalcCompCast<float>(src, dst, comp, cast);
+        break;
+      case CV_64F:
+        this->CalcCompCast<double>(src, dst, comp, cast);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  //
+  // キャスト方法指定
+  //
+
+  // 距離変換(0以外)
+  template <typename Ts, typename Td>
+  void CalcCast(const cv::Mat& src, cv::Mat& dst, const std::function<const Td(const T&)>& cast) {
+    this->ConvertTo<Td>(this->TransformSqDist<Ts>(src,
+                                                  [](const Ts& val) -> bool {
+                                                    return std::abs(val) >
+                                                           std::numeric_limits<Ts>::epsilon();
+                                                  }),
+                        dst, cast);
+  }
+
+  // 距離変換(0のみ)
+  template <typename Ts, typename Td>
+  void CalcInvCast(const cv::Mat& src, cv::Mat& dst,
+                   const std::function<const Td(const T&)>& cast) {
+    this->ConvertTo<Td>(this->TransformSqDist<Ts>(src,
+                                                  [](const Ts& val) -> bool {
+                                                    return std::abs(val) <=
+                                                           std::numeric_limits<Ts>::epsilon();
+                                                  }),
+                        dst, cast);
+  }
+
+  // 距離変換(0以外)
+  template <typename Ts, typename F>
+  void CalcCast(const cv::Mat& src, cv::Mat& dst, const F& cast) {
+    switch (CV_MAT_DEPTH(dst.type())) {
+      case CV_8U:
+        this->CalcCast<Ts, uchar>(src, dst, cast);
+        break;
+      case CV_8S:
+        this->CalcCast<Ts, char>(src, dst, cast);
+        break;
+      case CV_16U:
+        this->CalcCast<Ts, ushort>(src, dst, cast);
+        break;
+      case CV_16S:
+        this->CalcCast<Ts, short>(src, dst, cast);
+        break;
+      case CV_32S:
+        this->CalcCast<Ts, int>(src, dst, cast);
+        break;
+      case CV_32F:
+        this->CalcCast<Ts, float>(src, dst, cast);
+        break;
+      case CV_64F:
+        this->CalcCast<Ts, double>(src, dst, cast);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換(0のみ)
+  template <typename Ts, typename F>
+  void CalcInvCast(const cv::Mat& src, cv::Mat& dst, const F& cast) {
+    switch (CV_MAT_DEPTH(dst.type())) {
+      case CV_8U:
+        this->CalcInvCast<Ts, uchar>(src, dst, cast);
+        break;
+      case CV_8S:
+        this->CalcInvCast<Ts, char>(src, dst, cast);
+        break;
+      case CV_16U:
+        this->CalcInvCast<Ts, ushort>(src, dst, cast);
+        break;
+      case CV_16S:
+        this->CalcInvCast<Ts, short>(src, dst, cast);
+        break;
+      case CV_32S:
+        this->CalcInvCast<Ts, int>(src, dst, cast);
+        break;
+      case CV_32F:
+        this->CalcInvCast<Ts, float>(src, dst, cast);
+        break;
+      case CV_64F:
+        this->CalcInvCast<Ts, double>(src, dst, cast);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換(0以外)
+  template <typename F>
+  void CalcCast(const cv::Mat& src, cv::Mat& dst, const F& cast) {
+    switch (CV_MAT_DEPTH(src.type())) {
+      case CV_8U:
+        this->CalcCast<uchar>(src, dst, cast);
+        break;
+      case CV_8S:
+        this->CalcCast<char>(src, dst, cast);
+        break;
+      case CV_16U:
+        this->CalcCast<ushort>(src, dst, cast);
+        break;
+      case CV_16S:
+        this->CalcCast<short>(src, dst, cast);
+        break;
+      case CV_32S:
+        this->CalcCast<int>(src, dst, cast);
+        break;
+      case CV_32F:
+        this->CalcCast<float>(src, dst, cast);
+        break;
+      case CV_64F:
+        this->CalcCast<double>(src, dst, cast);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換(0のみ)
+  template <typename F>
+  void CalcInvCast(const cv::Mat& src, cv::Mat& dst, const F& cast) {
+    switch (CV_MAT_DEPTH(src.type())) {
+      case CV_8U:
+        this->CalcInvCast<uchar>(src, dst, cast);
+        break;
+      case CV_8S:
+        this->CalcInvCast<char>(src, dst, cast);
+        break;
+      case CV_16U:
+        this->CalcInvCast<ushort>(src, dst, cast);
+        break;
+      case CV_16S:
+        this->CalcInvCast<short>(src, dst, cast);
+        break;
+      case CV_32S:
+        this->CalcInvCast<int>(src, dst, cast);
+        break;
+      case CV_32F:
+        this->CalcInvCast<float>(src, dst, cast);
+        break;
+      case CV_64F:
+        this->CalcInvCast<double>(src, dst, cast);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  //
+  // 比較方法指定
+  //
+
+  // 距離変換
+  template <typename Ts, typename Td,
+            std::enable_if_t<std::is_same<T, Td>{}, std::nullptr_t> = nullptr>
+  void CalcComp(const cv::Mat& src, cv::Mat& dst,
+                const std::function<const bool(const Ts&)>& comp) {
+    this->ConvertTo<Td>(this->TransformSqDist<Ts>(src, comp), dst,
+                        [](const T& val) -> Td { return std::sqrt(val); });
+  }
+
+  // 距離変換
+  template <typename Ts, typename Td,
+            std::enable_if_t<!std::is_same<T, Td>{}, std::nullptr_t> = nullptr>
+  void CalcComp(const cv::Mat& src, cv::Mat& dst,
+                const std::function<const bool(const Ts&)>& comp) {
+    this->ConvertTo<Td>(this->TransformSqDist<Ts>(src, comp), dst,
+                        [](const T& val) -> Td { return cv::saturate_cast<Td>(std::sqrt(val)); });
+  }
+
+  // 距離変換(距離の二乗)
+  template <typename Ts, typename Td,
+            std::enable_if_t<std::is_same<T, Td>{}, std::nullptr_t> = nullptr>
+  void CalcCompSq(const cv::Mat& src, cv::Mat& dst,
+                  const std::function<const bool(const Ts&)>& comp) {
+    this->ConvertTo<Td>(this->TransformSqDist<Ts>(src, comp), dst,
+                        [](const T& val) -> Td { return val; });
+  }
+
+  // 距離変換(距離の二乗)
+  template <typename Ts, typename Td,
+            std::enable_if_t<!std::is_same<T, Td>{}, std::nullptr_t> = nullptr>
+  void CalcCompSq(const cv::Mat& src, cv::Mat& dst,
+                  const std::function<const bool(const Ts&)>& comp) {
+    this->ConvertTo<Td>(this->TransformSqDist<Ts>(src, comp), dst,
+                        [](const T& val) -> Td { return cv::saturate_cast<Td>(val); });
+  }
+
+  // 距離変換
+  template <typename Ts>
+  void CalcComp(const cv::Mat& src, cv::Mat& dst,
+                const std::function<const bool(const Ts&)>& comp) {
+    switch (CV_MAT_DEPTH(dst.type())) {
+      case CV_8U:
+        this->CalcComp<Ts, uchar>(src, dst, comp);
+        break;
+      case CV_8S:
+        this->CalcComp<Ts, char>(src, dst, comp);
+        break;
+      case CV_16U:
+        this->CalcComp<Ts, ushort>(src, dst, comp);
+        break;
+      case CV_16S:
+        this->CalcComp<Ts, short>(src, dst, comp);
+        break;
+      case CV_32S:
+        this->CalcComp<Ts, int>(src, dst, comp);
+        break;
+      case CV_32F:
+        this->CalcComp<Ts, float>(src, dst, comp);
+        break;
+      case CV_64F:
+        this->CalcComp<Ts, double>(src, dst, comp);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換(距離の二乗))
+  template <typename Ts>
+  void CalcSq(const cv::Mat& src, cv::Mat& dst, const std::function<const bool(const Ts&)>& comp) {
+    switch (CV_MAT_DEPTH(dst.type())) {
+      case CV_8U:
+        this->CalcCompSq<Ts, uchar>(src, dst, comp);
+        break;
+      case CV_8S:
+        this->CalcCompSq<Ts, char>(src, dst, comp);
+        break;
+      case CV_16U:
+        this->CalcCompSq<Ts, ushort>(src, dst, comp);
+        break;
+      case CV_16S:
+        this->CalcCompSq<Ts, short>(src, dst, comp);
+        break;
+      case CV_32S:
+        this->CalcCompSq<Ts, int>(src, dst, comp);
+        break;
+      case CV_32F:
+        this->CalcCompSq<Ts, float>(src, dst, comp);
+        break;
+      case CV_64F:
+        this->CalcCompSq<Ts, double>(src, dst, comp);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換
+  template <typename F>
+  void CalcComp(const cv::Mat& src, cv::Mat& dst, const F& comp) {
+    switch (CV_MAT_DEPTH(src.type())) {
+      case CV_8U:
+        this->CalcComp<uchar>(src, dst, comp);
+        break;
+      case CV_8S:
+        this->CalcComp<char>(src, dst, comp);
+        break;
+      case CV_16U:
+        this->CalcComp<ushort>(src, dst, comp);
+        break;
+      case CV_16S:
+        this->CalcComp<short>(src, dst, comp);
+        break;
+      case CV_32S:
+        this->CalcComp<int>(src, dst, comp);
+        break;
+      case CV_32F:
+        this->CalcComp<float>(src, dst, comp);
+        break;
+      case CV_64F:
+        this->CalcComp<double>(src, dst, comp);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換(距離の二乗))
+  template <typename F>
+  void CalcCompSq(const cv::Mat& src, cv::Mat& dst, const F& comp) {
+    switch (CV_MAT_DEPTH(src.type())) {
+      case CV_8U:
+        this->CalcCompSq<uchar>(src, dst, comp);
+        break;
+      case CV_8S:
+        this->CalcCompSq<char>(src, dst, comp);
+        break;
+      case CV_16U:
+        this->CalcCompSq<ushort>(src, dst, comp);
+        break;
+      case CV_16S:
+        this->CalcCompSq<short>(src, dst, comp);
+        break;
+      case CV_32S:
+        this->CalcCompSq<int>(src, dst, comp);
+        break;
+      case CV_32F:
+        this->CalcCompSq<float>(src, dst, comp);
+        break;
+      case CV_64F:
+        this->CalcCompSq<double>(src, dst, comp);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  //
+  // キャスト方法、比較方法指定なし
+  //
+
+  // 距離変換(0以外)
+  template <typename Ts, typename Td,
+            std::enable_if_t<std::is_same<T, Td>{}, std::nullptr_t> = nullptr>
+  void Calc(const cv::Mat& src, cv::Mat& dst) {
+    this->ConvertTo<Td>(this->TransformSqDist<Ts>(src,
+                                                  [](const Ts& val) -> bool {
+                                                    return std::abs(val) >
+                                                           std::numeric_limits<Ts>::epsilon();
+                                                  }),
+                        dst, [](const T& val) -> Td { return std::sqrt(val); });
+  }
+
+  // 距離変換(0以外)
+  template <typename Ts, typename Td,
+            std::enable_if_t<!std::is_same<T, Td>{}, std::nullptr_t> = nullptr>
+  void Calc(const cv::Mat& src, cv::Mat& dst) {
+    this->ConvertTo<Td>(
+        this->TransformSqDist<Ts>(src,
+                                  [](const Ts& val) -> bool {
+                                    return std::abs(val) > std::numeric_limits<Ts>::epsilon();
+                                  }),
+        dst, [](const T& val) -> Td { return cv::saturate_cast<Td>(std::sqrt(val)); });
+  }
+
+  // 距離変換(距離の二乗))
+  template <typename Ts, typename Td,
+            std::enable_if_t<std::is_same<T, Td>{}, std::nullptr_t> = nullptr>
+  void CalcSq(const cv::Mat& src, cv::Mat& dst) {
+    this->ConvertTo<Td>(this->TransformSqDist<Ts>(src,
+                                                  [](const Ts& val) -> bool {
+                                                    return std::abs(val) >
+                                                           std::numeric_limits<Ts>::epsilon();
+                                                  }),
+                        dst, [](const T& val) -> Td { return val; });
+  }
+
+  // 距離変換(距離の二乗))
+  template <typename Ts, typename Td,
+            std::enable_if_t<!std::is_same<T, Td>{}, std::nullptr_t> = nullptr>
+  void CalcSq(const cv::Mat& src, cv::Mat& dst) {
+    this->ConvertTo<Td>(this->TransformSqDist<Ts>(src,
+                                                  [](const Ts& val) -> bool {
+                                                    return std::abs(val) >
+                                                           std::numeric_limits<Ts>::epsilon();
+                                                  }),
+                        dst, [](const T& val) -> Td { return cv::saturate_cast<Td>(val); });
+  }
+
+  // 距離変換(0のみ)
+  template <typename Ts, typename Td,
+            std::enable_if_t<std::is_same<T, Td>{}, std::nullptr_t> = nullptr>
+  void CalcInv(const cv::Mat& src, cv::Mat& dst) {
+    this->ConvertTo<Td>(this->TransformSqDist<Ts>(src,
+                                                  [](const Ts& val) -> bool {
+                                                    return std::abs(val) <=
+                                                           std::numeric_limits<Ts>::epsilon();
+                                                  }),
+                        dst, [](const T& val) -> Td { return std::sqrt(val); });
+  }
+
+  // 距離変換(0のみ)
+  template <typename Ts, typename Td,
+            std::enable_if_t<!std::is_same<T, Td>{}, std::nullptr_t> = nullptr>
+  void CalcInv(const cv::Mat& src, cv::Mat& dst) {
+    this->ConvertTo<Td>(
+        this->TransformSqDist<Ts>(src,
+                                  [](const Ts& val) -> bool {
+                                    return std::abs(val) <= std::numeric_limits<Ts>::epsilon();
+                                  }),
+        dst, [](const T& val) -> Td { return cv::saturate_cast<Td>(std::sqrt(val)); });
+  }
+
+  // 距離変換(0のみ、距離二乗)
+  template <typename Ts, typename Td,
+            std::enable_if_t<std::is_same<T, Td>{}, std::nullptr_t> = nullptr>
+  void CalcInvSq(const cv::Mat& src, cv::Mat& dst) {
+    this->ConvertTo<Td>(this->TransformSqDist<Ts>(src,
+                                                  [](const Ts& val) -> bool {
+                                                    return std::abs(val) <=
+                                                           std::numeric_limits<Ts>::epsilon();
+                                                  }),
+                        dst, [](const T& val) -> Td { return val; });
+  }
+
+  // 距離変換(0のみ、距離二乗)
+  template <typename Ts, typename Td,
+            std::enable_if_t<!std::is_same<T, Td>{}, std::nullptr_t> = nullptr>
+  void CalcInvSq(const cv::Mat& src, cv::Mat& dst) {
+    this->ConvertTo<Td>(this->TransformSqDist<Ts>(src,
+                                                  [](const Ts& val) -> bool {
+                                                    return std::abs(val) <=
+                                                           std::numeric_limits<Ts>::epsilon();
+                                                  }),
+                        dst, [](const T& val) -> Td { return cv::saturate_cast<Td>(val); });
+  }
+
+  // 距離変換(0以外)
+  template <typename Ts>
+  void Calc(const cv::Mat& src, cv::Mat& dst) {
+    switch (CV_MAT_DEPTH(dst.type())) {
+      case CV_8U:
+        this->Calc<Ts, uchar>(src, dst);
+        break;
+      case CV_8S:
+        this->Calc<Ts, char>(src, dst);
+        break;
+      case CV_16U:
+        this->Calc<Ts, ushort>(src, dst);
+        break;
+      case CV_16S:
+        this->Calc<Ts, short>(src, dst);
+        break;
+      case CV_32S:
+        this->Calc<Ts, int>(src, dst);
+        break;
+      case CV_32F:
+        this->Calc<Ts, float>(src, dst);
+        break;
+      case CV_64F:
+        this->Calc<Ts, double>(src, dst);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換(距離の二乗))
+  template <typename Ts>
+  void CalcSq(const cv::Mat& src, cv::Mat& dst) {
+    switch (CV_MAT_DEPTH(dst.type())) {
+      case CV_8U:
+        this->CalcSq<Ts, uchar>(src, dst);
+        break;
+      case CV_8S:
+        this->CalcSq<Ts, char>(src, dst);
+        break;
+      case CV_16U:
+        this->CalcSq<Ts, ushort>(src, dst);
+        break;
+      case CV_16S:
+        this->CalcSq<Ts, short>(src, dst);
+        break;
+      case CV_32S:
+        this->CalcSq<Ts, int>(src, dst);
+        break;
+      case CV_32F:
+        this->CalcSq<Ts, float>(src, dst);
+        break;
+      case CV_64F:
+        this->CalcSq<Ts, double>(src, dst);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換(0のみ)
+  template <typename Ts>
+  void CalcInv(const cv::Mat& src, cv::Mat& dst) {
+    switch (CV_MAT_DEPTH(dst.type())) {
+      case CV_8U:
+        this->CalcInv<Ts, uchar>(src, dst);
+        break;
+      case CV_8S:
+        this->CalcInv<Ts, char>(src, dst);
+        break;
+      case CV_16U:
+        this->CalcInv<Ts, ushort>(src, dst);
+        break;
+      case CV_16S:
+        this->CalcInv<Ts, short>(src, dst);
+        break;
+      case CV_32S:
+        this->CalcInv<Ts, int>(src, dst);
+        break;
+      case CV_32F:
+        this->CalcInv<Ts, float>(src, dst);
+        break;
+      case CV_64F:
+        this->CalcInv<Ts, double>(src, dst);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換(0のみ、距離二乗)
+  template <typename Ts>
+  void CalcInvSq(const cv::Mat& src, cv::Mat& dst) {
+    switch (CV_MAT_DEPTH(dst.type())) {
+      case CV_8U:
+        this->CalcInvSq<Ts, uchar>(src, dst);
+        break;
+      case CV_8S:
+        this->CalcInvSq<Ts, char>(src, dst);
+        break;
+      case CV_16U:
+        this->CalcInvSq<Ts, ushort>(src, dst);
+        break;
+      case CV_16S:
+        this->CalcInvSq<Ts, short>(src, dst);
+        break;
+      case CV_32S:
+        this->CalcInvSq<Ts, int>(src, dst);
+        break;
+      case CV_32F:
+        this->CalcInvSq<Ts, float>(src, dst);
+        break;
+      case CV_64F:
+        this->CalcInvSq<Ts, double>(src, dst);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換(0以外)
+  void Calc(const cv::Mat& src, cv::Mat& dst) {
+    switch (CV_MAT_DEPTH(src.type())) {
+      case CV_8U:
+        this->Calc<uchar>(src, dst);
+        break;
+      case CV_8S:
+        this->Calc<char>(src, dst);
+        break;
+      case CV_16U:
+        this->Calc<ushort>(src, dst);
+        break;
+      case CV_16S:
+        this->Calc<short>(src, dst);
+        break;
+      case CV_32S:
+        this->Calc<int>(src, dst);
+        break;
+      case CV_32F:
+        this->Calc<float>(src, dst);
+        break;
+      case CV_64F:
+        this->Calc<double>(src, dst);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換(距離の二乗))
+  void CalcSq(const cv::Mat& src, cv::Mat& dst) {
+    switch (CV_MAT_DEPTH(src.type())) {
+      case CV_8U:
+        this->CalcSq<uchar>(src, dst);
+        break;
+      case CV_8S:
+        this->CalcSq<char>(src, dst);
+        break;
+      case CV_16U:
+        this->CalcSq<ushort>(src, dst);
+        break;
+      case CV_16S:
+        this->CalcSq<short>(src, dst);
+        break;
+      case CV_32S:
+        this->CalcSq<int>(src, dst);
+        break;
+      case CV_32F:
+        this->CalcSq<float>(src, dst);
+        break;
+      case CV_64F:
+        this->CalcSq<double>(src, dst);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換(0のみ)
+  void CalcInv(const cv::Mat& src, cv::Mat& dst) {
+    switch (CV_MAT_DEPTH(src.type())) {
+      case CV_8U:
+        this->CalcInv<uchar>(src, dst);
+        break;
+      case CV_8S:
+        this->CalcInv<char>(src, dst);
+        break;
+      case CV_16U:
+        this->CalcInv<ushort>(src, dst);
+        break;
+      case CV_16S:
+        this->CalcInv<short>(src, dst);
+        break;
+      case CV_32S:
+        this->CalcInv<int>(src, dst);
+        break;
+      case CV_32F:
+        this->CalcInv<float>(src, dst);
+        break;
+      case CV_64F:
+        this->CalcInv<double>(src, dst);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  // 距離変換(0のみ、距離二乗)
+  void CalcInvSq(const cv::Mat& src, cv::Mat& dst) {
+    switch (CV_MAT_DEPTH(src.type())) {
+      case CV_8U:
+        this->CalcInvSq<uchar>(src, dst);
+        break;
+      case CV_8S:
+        this->CalcInvSq<char>(src, dst);
+        break;
+      case CV_16U:
+        this->CalcInvSq<ushort>(src, dst);
+        break;
+      case CV_16S:
+        this->CalcInvSq<short>(src, dst);
+        break;
+      case CV_32S:
+        this->CalcInvSq<int>(src, dst);
+        break;
+      case CV_32F:
+        this->CalcInvSq<float>(src, dst);
+        break;
+      case CV_64F:
+        this->CalcInvSq<double>(src, dst);
+        break;
+        // 例外処理
+      default:
+        NoDefault("Unsupported OpenCV matrix type");
+    }
+  }
+
+  //
+  // 座標変換
+  //
+
+  // 最も近い座標を計算
+  const cv::Point CalcPoint(const int x, const int y) {
+    const int& _y = m_idxY[x * m_size.height + y];
+    return {m_idxX[_y * m_size.width + x], _y};
+  }
+
+  // 最も近い座標を計算
+  const cv::Point CalcPoint(const cv::Point& pos) { return CalcPoint(pos.x, pos.y); }
+
+  // 最も近い座標を計算
+  void CalcPoint(cv::Mat& points) {
+    Assert(points.size() == m_size, "Poins-Data Size Error");
+
+    tbb::tbb_for(points.size(), [&](const tbb::blocked_range2d<int>& range) {
+      for (int y = std::begin(range.rows()); y < std::end(range.rows()); ++y) {
+        int x = std::begin(range.cols());
+        cv::Point* ptrPoint = points.ptr<cv::Point>(y, x);
+        const int* ptrY = &m_idxY[x * m_size.height + y];
+        const int* ptrX = &m_idxX[x];
+        for (; x < std::end(range.cols()); ++x, ++ptrPoint, ptrY += m_size.height, ++ptrX) {
+          const int& _y = *ptrY;
+          ptrPoint->x = ptrX[_y * m_size.width];
+          ptrPoint->y = _y;
+        }
+      }
+    });
+  }
+};
+
+}}  // namespace imgproc::old
+
+#ifdef _MSC_VER
+
+// インポート・エクスポートマクロ
+#ifndef _EXPORT_IMGPROC_
+#if !defined(_MSC_VER) || defined(_LIB)
+#define _EXPORT_IMGPROC_
+#else
+MSVC_WARNING_DISABLE(251)
+#ifdef ImgProc_EXPORTS
+#define _EXPORT_IMGPROC_ __declspec(dllexport)
+#else
+#define _EXPORT_IMGPROC_ __declspec(dllimport)
+#endif
+#endif
+#endif
+
+#ifndef _EXTERN_IMGPROC_
+#ifdef ImgProc_EXPORTS
+#define _EXTERN_IMGPROC_
+#else
+#define _EXTERN_IMGPROC_ extern
+#endif
+#endif
+
+/// <summary>
+/// 画像処理
+/// </summary>
+namespace imgproc { namespace old {
+
+//! インスタンス化抑制
+_EXTERN_IMGPROC_ template class _EXPORT_IMGPROC_ DistanceTransform_<float, tbb::auto_partitioner>;
+_EXTERN_IMGPROC_ template class _EXPORT_IMGPROC_
+    DistanceTransform_<float, tbb::affinity_partitioner>;
+
+}}  // namespace imgproc::old
+
+#endif
+
+
