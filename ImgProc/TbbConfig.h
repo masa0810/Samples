@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CommonDef.h"
 
@@ -61,12 +61,6 @@ template <typename T>
 using tbb_deque = std::deque<T, tbb::scalable_allocator<T>>;
 
 /// <summary>
-/// TbbAllocUnique
-/// </summary>
-template <typename T>
-using TbbAllocUnique = commonutility::AllocUnique_<T, tbb::scalable_allocator>;
-
-/// <summary>
 /// tbb_cache_aligned_vector
 /// </summary>
 template <typename T>
@@ -77,12 +71,6 @@ using tbb_cache_aligned_vector = std::vector<T, tbb::cache_aligned_allocator<T>>
 /// </summary>
 template <typename T>
 using tbb_cache_aligned_deque = std::deque<T, tbb::cache_aligned_allocator<T>>;
-
-/// <summary>
-/// TbbCacheAlignedAllocUnique
-/// </summary>
-template <typename T>
-using TbbCacheAlignedAllocUnique = commonutility::AllocUnique_<T, tbb::cache_aligned_allocator>;
 
 #pragma endregion
 

@@ -98,18 +98,14 @@
 // SDK version
 #include "targetver.h"
 
+#define BENCHMARK_USE_MAIN
+#include <benchmarkset.h>
+//#define GTEST_USE_MAIN
+//#include <gtestset.h>
+
 #include <fmtset.h>
 #include <opencvset.h>
 #include <tbbset.h>
-
-#ifdef _DEBUG
-#define BENCHMARK_SUFFIX "d"
-#else
-#define BENCHMARK_SUFFIX
-#endif
-#pragma comment(lib, "benchmark" BENCHMARK_SUFFIX ".lib")
-#pragma comment(lib, "benchmark_main" BENCHMARK_SUFFIX ".lib")
-#pragma comment(lib, "shlwapi.lib")
 
 // C4996警告対策
 #ifndef _CRT_SECURE_NO_WARNINGS
@@ -155,7 +151,7 @@ MSVC_WARNING_POP
 MSVC_WARNING_DISABLE(100 189)
 #endif
 
-#define _EXPORT_COMMON_
+#define _EXPORT_IMGPROC_
 
 //-------------------------------------------
 // stdafx.cpp用警告対策
