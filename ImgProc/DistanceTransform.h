@@ -576,6 +576,43 @@ class DistanceTransform_ : public detail::NonCopyMembers_<P, P>,
   void CalcSq(const cv::Mat& src, cv::Mat& dst) {
     this->CalcSq<Ts, Td>(src, dst, [](const auto val) { return val != 0; });
   }
+
+  // 最も近い座標を計算
+  cv::Point CalcPoint(const int x, const int y) {
+    const auto idxX = m_imgBuf.Mat<Buf::X>();
+    const auto idxY = m_imgBuf.Mat<Buf::Y>();
+
+    const auto y_ = *idxY.ptr<BufType::ValueType_<Buf::Y>>(x, y);
+    return {*idxX.ptr<BufType::ValueType_<Buf::X>>(y_, x), y_};
+  }
+
+  // 最も近い座標を計算
+  cv::Point CalcPoint(const cv::Point& pos) { return CalcPoint(pos.x, pos.y); }
+
+  // 最も近い座標を計算
+  void CalcPoint(cv::Mat& points) {
+    using XType = BufType::ValueType_<Buf::X>;
+    using XType = BufType::ValueType_<Buf::Y>;
+    const auto idxX = m_imgBuf.Mat<Buf::X>();
+    const auto idxY = m_imgBuf.Mat<Buf::Y>();
+
+    tbb::tbb_for(points.size(), [&points, &idxX, &idxY, step = idxX.step[0]](const auto& range) {
+      const auto& rows = range.rows();
+      const auto& cols = range.cols();
+      auto y = std::begin(rows);
+      for (const auto ye = std::end(rows); y < ye; ++y) {
+        auto x = std::begin(cols);
+        const auto* ptrX = idxY.ptr<BufType::ValueType_<Buf::X>>(0, x);
+        const auto* ptrY = idxY.ptr<BufType::ValueType_<Buf::Y>>(x, y);
+        auto* ptrPoint = points.ptr<cv::Point>(y, x);
+        for (const auto xe = std::end(cols); x < xe; ++x, ++ptrY, ++ptrPoint) {
+          const auto& y_ = *ptrY;
+          ptrPoint->x = ptrX[y_ * step];
+          ptrPoint->y = _y;
+        }
+      }
+    });
+  }
 };
 
 namespace old {
