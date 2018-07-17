@@ -37,6 +37,11 @@ namespace commonutility {
 /// <summary>
 /// 画像設定のパッキング用構造体
 /// </summary>
+/// @tparam T 画像識別に用いる型
+/// @tparam I 画像識別子
+/// @tparam V 値タイプ
+/// @tparam C チャンネル数
+/// @tparam D 画像保存フラグ
 template <typename T, T I, typename V, int C, bool D = false>
 struct ImageSetting_ {
   //! 識別タイプ
@@ -52,9 +57,13 @@ struct ImageSetting_ {
 };
 
 /// <summary>
-/// intバージョン
+/// 画像設定のパッキング用構造体(intバージョン)
 /// </summary>
-/// <remarks>enum自前で識別子を用意しない場合はこれを使用</remarks>
+/// <remarks>自前で識別子(enum等)を用意しない場合はこれを使用</remarks>
+/// @tparam I 画像識別子
+/// @tparam V 値タイプ
+/// @tparam C チャンネル数
+/// @tparam D 画像保存フラグ
 template <int I, typename V, int C, bool D = false>
 using I_ = ImageSetting_<int, I, V, C, D>;
 
