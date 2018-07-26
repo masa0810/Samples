@@ -2413,13 +2413,18 @@ MSVC_WARNING_DISABLE(251)
 /// <summary>
 /// 画像処理
 /// </summary>
-namespace imgproc { namespace old {
+namespace imgproc {
 
 //! インスタンス化抑制
-_EXTERN_IMGPROC_ template class _EXPORT_IMGPROC_ DistanceTransform_<float, tbb::auto_partitioner>;
 _EXTERN_IMGPROC_ template class _EXPORT_IMGPROC_
-    DistanceTransform_<float, tbb::affinity_partitioner>;
+    DistanceTransform_<float, tbb::auto_partitioner, tbb::cache_aligned_allocator>;
+_EXTERN_IMGPROC_ template class _EXPORT_IMGPROC_
+    DistanceTransform_<float, tbb::affinity_partitioner, tbb::cache_aligned_allocator>;
+_EXTERN_IMGPROC_ template class _EXPORT_IMGPROC_
+    DistanceTransformWithIndex_<float, tbb::auto_partitioner, tbb::cache_aligned_allocator>;
+_EXTERN_IMGPROC_ template class _EXPORT_IMGPROC_
+    DistanceTransformWithIndex_<float, tbb::affinity_partitioner, tbb::cache_aligned_allocator>;
 
-}}  // namespace imgproc::old
+}  // namespace imgproc
 
 #endif
