@@ -367,10 +367,12 @@ struct FindImage_ : FindImageImpl_<T, B, std::is_same<T, typename B::ImageType>:
 /// <remarks>キャッシュアライメント有効</remarks>
 template <typename ImgBufType, bool enableCacheAlign,
           std::enable_if_t<enableCacheAlign, std::nullptr_t> = nullptr>
-std::size_t CalcStep(const int width) {
+constexpr std::size_t CalcStep(const int width) noexcept {
   // キャッシュライン
-  static const std::size_t CacheLine = tbb::internal::NFS_GetLineSize();
-  static const std::size_t CacheLineM1 = CacheLine - 1;
+  //static const std::size_t CacheLine = tbb::internal::NFS_GetLineSize();
+  //static const std::size_t CacheLineM1 = CacheLine - 1;
+  static constexpr std::size_t CacheLine = 64;  // tbb::internal::NFS_GetLineSize();
+  static constexpr std::size_t CacheLineM1 = CacheLine - 1;
   // 画像情報
   static constexpr auto channel = ImgBufType::Channel;
   static constexpr auto elemSize = ImgBufType::ElemtnSize;
@@ -387,7 +389,7 @@ std::size_t CalcStep(const int width) {
 /// <remarks>キャッシュアライメント無効</remarks>
 template <typename ImgBufType, bool enableCacheAlign,
           std::enable_if_t<!enableCacheAlign, std::nullptr_t> = nullptr>
-std::size_t CalcStep(const int width) {
+constexpr std::size_t CalcStep(const int width) noexcept {
   // 画像情報
   static constexpr auto channel = ImgBufType::Channel;
   static constexpr auto elemSize = ImgBufType::ElemtnSize;
@@ -687,13 +689,13 @@ class ImageCollectionImpl_
   /// <summary>
   /// コンストラクタ
   /// </summary>
-  /// <param name="newSize">初期化サイズ</param>
+  /// <param name="newSize">[in] 初期化サイズ</param>
   explicit ImageCollectionImpl_(const cv::Size& newSize) { this->Init(newSize); }
 
   /// <summary>
   /// 初期化
   /// </summary>
-  /// <param name="newSize">新しいサイズ</param>
+  /// <param name="newSize">[in] 新しいサイズ</param>
   /// <remarks>複数のパラメータリストに対してリサイズを実行する。</remarks>
   template <ImageType... Args>
   void Init(const cv::Size& newSize) {
@@ -703,7 +705,7 @@ class ImageCollectionImpl_
   /// <summary>
   /// 初期化
   /// </summary>
-  /// <param name="newSize">新しいサイズ</param>
+  /// <param name="newSize">[in] 新しいサイズ</param>
   void Init(const cv::Size& newSize) {
     detail::Recursive<BufferBodyType>(
         *this, [&newSize, this](auto& imgBuf) { this->ResizeImpl(newSize, imgBuf); });
@@ -712,18 +714,20 @@ class ImageCollectionImpl_
   /// <summary>
   /// 初期化
   /// </summary>
-  /// <param name="newSize">新しいサイズ</param>
+  /// <param name="newWidth">[in] 新しい幅</param>
+  /// <param name="newHeight">[in] 新しい高さ</param>
   /// <remarks>複数のパラメータリストに対してリサイズを実行する。</remarks>
   template <ImageType... Args>
-  void Init(const int width, const int height) {
-    this->Init<Args...>({width, height});
+  void Init(const int newWidth, const int newHeight) {
+    this->Init<Args...>({newWidth, newHeight});
   }
 
   /// <summary>
   /// 初期化
   /// </summary>
-  /// <param name="newSize">新しいサイズ</param>
-  void Init(const int width, const int height) { this->Init({width, height}); }
+  /// <param name="newWidth">[in] 新しいサイズ</param>
+  /// <param name="newHeight">[in] 新しいサイズ</param>
+  void Init(const int newWidth, const int newHeight) { this->Init({newWidth, newHeight}); }
 
   /// <summary>
   /// クリア
@@ -825,7 +829,7 @@ class ImageCollectionImpl_
   /// <summary>
   /// cv::Mat取得
   /// </summary>
-  /// <param name="roi">ROI</param>
+  /// <param name="roi">[in] ROI</param>
   /// <returns>cv::Mat</returns>
   /// <remarks>const用</remarks>
   template <ImageType T>
@@ -836,7 +840,7 @@ class ImageCollectionImpl_
   /// <summary>
   /// cv::Mat取得
   /// </summary>
-  /// <param name="roi">ROI</param>
+  /// <param name="roi">[in] ROI</param>
   /// <returns>cv::Mat</returns>
   /// <remarks>
   /// <para>const用</para>
@@ -913,19 +917,19 @@ using AlignedImageCollection_ = ImageCollectionImpl_<tbb::cache_aligned_allocato
 /// <summary>
 /// 画像バッファの詳細定義
 /// </summary>
-template <template <typename...> class Alloc_, typename V, int C, bool D = false>
+template <template <typename...> class Alloc_, typename V, int C = 1, bool D = false>
 using ImageBufferImpl_ = ImageCollectionImpl_<Alloc_, I_<0, V, C, D>>;
 
 /// <summary>
 /// 画像バッファ
 /// </summary>
-template <typename V, int C, bool D = false>
+template <typename V, int C = 1, bool D = false>
 using ImageBuffer_ = ImageBufferImpl_<std::allocator, V, C, D>;
 
 /// <summary>
 /// 画像バッファ
 /// </summary>
-template <typename V, int C, bool D = false>
+template <typename V, int C = 1, bool D = false>
 using AlignedImageBuffer_ = ImageBufferImpl_<tbb::cache_aligned_allocator, V, C, D>;
 
 }  // namespace commonutility

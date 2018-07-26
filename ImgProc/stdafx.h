@@ -60,6 +60,10 @@
 
 // Debug設定
 #ifdef _DEBUG
+// Benchmarkのデバッグ版使用
+#define BENCHMARK_USE_DEBUG 1
+// GoogleTestのデバッグ版使用
+#define GTEST_USE_DEBUG 1
 // OpenCVのデバッグ版使用
 #define OPENCV_USE_DEBUG 1
 // TBBのデバッグ版使用

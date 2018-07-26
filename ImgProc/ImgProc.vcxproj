@@ -58,7 +58,7 @@
       <AdditionalIncludeDirectories>C:\Library\Current\Eigen\include;C:\Library\Current\Fmt\include;C:\Library\Current\IPP\include;C:\Library\Current\MKL\include;C:\Library\Current\$(PlatformToolset)\Benchmark\include;C:\Library\Current\$(PlatformToolset)\Boost\include;C:\Library\Current\$(PlatformToolset)\GoogleTest\include;C:\Library\Current\$(PlatformToolset)\OpenCV\include;C:\Library\Current\$(PlatformToolset)\TBB\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <DiagnosticsFormat>Caret</DiagnosticsFormat>
-      <AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/Zc:__cplusplus /bigobj %(AdditionalOptions)</AdditionalOptions>
       <ForcedIncludeFiles>stdafx.h</ForcedIncludeFiles>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <LanguageStandard>stdcpp14</LanguageStandard>
@@ -81,7 +81,7 @@
       <FloatingPointModel>Fast</FloatingPointModel>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <LanguageStandard>stdcpp14</LanguageStandard>
-      <AdditionalOptions>/Zc:__cplusplus /Qvec-report:1 /favor:INTEL64 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/Zc:__cplusplus /bigobj /Qvec-report:1 /favor:INTEL64 %(AdditionalOptions)</AdditionalOptions>
       <ForcedIncludeFiles>stdafx.h</ForcedIncludeFiles>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
