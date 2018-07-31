@@ -1,7 +1,7 @@
-﻿#pragma once
+#pragma once
 
-#include "OpenCvConfig.h"
-#include "SerializeUtility.h"
+#include <Common/OpenCvConfig.h>
+#include <Common/SerializeUtility.h>
 
 MSVC_ALL_WARNING_PUSH
 
@@ -66,6 +66,7 @@ struct ImageSetting_ {
 /// @tparam D 画像保存フラグ
 template <int I, typename V, int C = 1, bool D = false>
 using I_ = ImageSetting_<int, I, V, C, D>;
+
 
 /// <summary>
 /// 詳細
@@ -371,7 +372,7 @@ constexpr std::size_t CalcStep(const int width) noexcept {
   // キャッシュライン
   //static const std::size_t CacheLine = tbb::internal::NFS_GetLineSize();
   //static const std::size_t CacheLineM1 = CacheLine - 1;
-  static constexpr std::size_t CacheLine = 64;  // tbb::internal::NFS_GetLineSize();
+  static constexpr std::size_t CacheLine = 128;
   static constexpr std::size_t CacheLineM1 = CacheLine - 1;
   // 画像情報
   static constexpr auto channel = ImgBufType::Channel;
@@ -454,7 +455,7 @@ static void Recursive(const T& imgBuf, const F& func) {
 /// <remarks>std::tuple の実装を参考にした複数の画像のバッファを保持するためのクラス</remarks>
 template <template <typename...> class Alloc_, typename I, typename... Args>
 class ImageCollectionImpl_
-    : public detail::DuplicateCheck_<std::tuple<>, I, Args...>,
+    : detail::DuplicateCheck_<std::tuple<>, I, Args...>,
       detail::ImageBuffer_<std::vector<std::uint8_t, Alloc_<std::uint8_t>>, I, Args...>,
       boost::equality_comparable<ImageCollectionImpl_<Alloc_, I, Args...>,
                                  ImageCollectionImpl_<Alloc_, I, Args...>> {
@@ -899,7 +900,7 @@ class ImageCollectionImpl_
   /// <returns>空かどうか</returns>
   /// <remarks>最初のデータへのアクセス</remarks>
   bool Empty() const { return this->Empty<ImageType{}>(); }
-};  // namespace commonutility
+};
 
 /// <summary>
 /// 画像コレクション
