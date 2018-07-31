@@ -5,6 +5,7 @@ MSVC_ALL_WARNING_PUSH
 
 #include <cstddef>
 
+#include <functional>
 #include <tuple>
 
 // 警告抑制解除
@@ -30,6 +31,8 @@ class NonCopyMembers_ {
   using TupleType = std::tuple<Types...>;
   //! メンバ
   mutable TupleType m_members = {};
+  //! 初期化用関数オブジェクト
+  std::function<void(TupleType&)> m_initFunc = {};
 
  public:
   //! メンバ数
@@ -51,7 +54,10 @@ class NonCopyMembers_ {
   /// <summary>
   /// コピーコンストラクタ
   /// </summary>
-  NonCopyMembers_(const NonCopyMembers_&) {}
+  /// <param name="rhs">コピー元</param>
+  NonCopyMembers_(const NonCopyMembers_& rhs) : m_initFunc(rhs.m_initFunc) {
+    if (m_initFunc) m_initFunc(m_members);
+  }
 
   /// <summary>
   /// 代入演算子
@@ -61,7 +67,10 @@ class NonCopyMembers_ {
   /// <summary>
   /// ムーブコンストラクタ
   /// </summary>
-  NonCopyMembers_(NonCopyMembers_&&) {}
+  /// <param name="rhs">ムーブ元</param>
+  NonCopyMembers_(NonCopyMembers_&& rhs) : m_initFunc(std::move(rhs.m_initFunc)) {
+    if (m_initFunc) m_initFunc(m_members);
+  }
 
   /// <summary>
   /// ムーブ代入演算子
@@ -71,9 +80,18 @@ class NonCopyMembers_ {
   /// <summary>
   /// デストラクタ
   /// </summary>
-  virtual ~NonCopyMembers_() = default;
+  ~NonCopyMembers_() = default;
 
 #pragma endregion
+
+  /// <summary>
+  /// コンストラクタ
+  /// </summary>
+  /// <param name="initFunc">初期化用関数オブジェクト</param>
+  /// <remarks>メンバの初期化をカスタマイズ出来るコンストラクタ</remarks>
+  /// @tparam F 初期化用関数オブジェクトタイプ
+  template <typename F>
+  NonCopyMembers_(const F& initFunc) : m_initFunc(initFunc) {}
 
   /// <summary>
   /// メンバアクセス
@@ -81,7 +99,7 @@ class NonCopyMembers_ {
   /// <returns>メンバへの参照</returns>
   /// @tparam I メンバインデックス
   template <std::size_t I>
-  constexpr NcMemberType_<I>& NcMember() noexcept {
+  NcMemberType_<I>& NcMember() noexcept {
     return std::get<I>(m_members);
   }
 
@@ -90,7 +108,7 @@ class NonCopyMembers_ {
   /// </summary>
   /// <returns>メンバへの参照</returns>
   /// <remarks>インデックス0の要素専用</remarks>
-  constexpr NcMemberType& NcMember() noexcept { return std::get<0>(m_members); }
+  NcMemberType& NcMember() noexcept { return std::get<0>(m_members); }
 
   /// <summary>
   /// メンバアクセス
@@ -99,7 +117,7 @@ class NonCopyMembers_ {
   /// <remarks>const用</remarks>
   /// @tparam I メンバインデックス
   template <std::size_t I>
-  constexpr const NcMemberType_<I>& NcMember() const noexcept {
+  const NcMemberType_<I>& NcMember() const noexcept {
     return std::get<I>(m_members);
   }
 
@@ -111,7 +129,7 @@ class NonCopyMembers_ {
   /// <para>インデックス0の要素専用</para>
   /// <para>const用</para>
   /// </remarks>
-  constexpr const NcMemberType& NcMember() const noexcept { return std::get<0>(m_members); }
+  const NcMemberType& NcMember() const noexcept { return std::get<0>(m_members); }
 
   /// <summary>
   /// メンバアクセス
@@ -120,7 +138,7 @@ class NonCopyMembers_ {
   /// <remarks>const用</remarks>
   /// @tparam I メンバインデックス
   template <std::size_t I>
-  constexpr NcMemberType_<I>& NcMemberMutable() const noexcept {
+  NcMemberType_<I>& NcMemberMutable() const noexcept {
     return std::get<I>(m_members);
   }
 
@@ -132,7 +150,7 @@ class NonCopyMembers_ {
   /// <para>インデックス0の要素専用</para>
   /// <para>mutable アクセス用</para>
   /// </remarks>
-  constexpr NcMemberType& NcMemberMutable() const noexcept { return std::get<0>(m_members); }
+  NcMemberType& NcMemberMutable() const noexcept { return std::get<0>(m_members); }
 
   /// <summary>
   /// メンバアクセス
@@ -140,7 +158,7 @@ class NonCopyMembers_ {
   /// <returns>メンバへの参照</returns>
   /// @tparam T メンバタイプ
   template <typename T>
-  constexpr T& NcMember() noexcept {
+  T& NcMember() noexcept {
     return std::get<T>(m_members);
   }
 
@@ -151,7 +169,7 @@ class NonCopyMembers_ {
   /// <remarks>const用</remarks>
   /// @tparam T メンバタイプ
   template <typename T>
-  constexpr const T& NcMember() const noexcept {
+  const T& NcMember() const noexcept {
     return std::get<T>(m_members);
   }
 
@@ -162,7 +180,7 @@ class NonCopyMembers_ {
   /// <remarks>mutable アクセス用</remarks>
   /// @tparam T メンバタイプ
   template <typename T>
-  constexpr T& NcMemberMutable() const noexcept {
+  T& NcMemberMutable() const noexcept {
     return std::get<T>(m_members);
   }
 };
